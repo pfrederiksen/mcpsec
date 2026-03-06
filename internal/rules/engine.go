@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"fmt"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -50,17 +52,12 @@ func (e *Engine) Evaluate(serverName string, server interface{}, rawConfig []byt
 			}
 			re, err := regexp.Compile(rule.Match.Pattern)
 			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: rule %s: invalid regex %q: %v\n", rule.ID, rule.Match.Pattern, err)
 				continue
 			}
-			matches := re.FindAllString(configStr, -1)
+			matches := re.FindAllString(configStr, 100)
 			if len(matches) > 0 {
-				// Redact the actual matched value for secrets
-				matchStr := matches[0]
-				if strings.Contains(strings.ToLower(rule.OWASPMCP), "mcp04") {
-					if len(matchStr) > 20 {
-						matchStr = matchStr[:20] + "..."
-					}
-				}
+				matchStr := redactMatch(matches[0], rule.OWASPMCP)
 				findings = append(findings, RuleFinding{
 					RuleID:      rule.ID,
 					Name:        rule.Name,
@@ -76,6 +73,7 @@ func (e *Engine) Evaluate(serverName string, server interface{}, rawConfig []byt
 			if rule.Match.Path != "" && rule.Match.Pattern != "" {
 				re, err := regexp.Compile(rule.Match.Pattern)
 				if err != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "Warning: rule %s: invalid regex %q: %v\n", rule.ID, rule.Match.Pattern, err)
 					continue
 				}
 				if re.MatchString(configStr) {
@@ -94,4 +92,31 @@ func (e *Engine) Evaluate(serverName string, server interface{}, rawConfig []byt
 	}
 
 	return findings
+}
+
+// redactMatch masks matched values that may contain secrets.
+func redactMatch(match, owaspMCP string) string {
+	// Always redact for secret-related rules
+	if strings.Contains(strings.ToLower(owaspMCP), "mcp04") {
+		return redactValue(match)
+	}
+
+	// Also redact if the match looks like it contains a secret
+	lower := strings.ToLower(match)
+	secretIndicators := []string{"key=", "token=", "secret=", "password=", "credential="}
+	for _, indicator := range secretIndicators {
+		if strings.Contains(lower, indicator) {
+			return redactValue(match)
+		}
+	}
+
+	return match
+}
+
+// redactValue masks all but the first few characters of a value.
+func redactValue(s string) string {
+	if len(s) <= 8 {
+		return "***"
+	}
+	return s[:8] + "***"
 }

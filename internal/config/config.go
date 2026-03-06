@@ -1,7 +1,10 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,7 +21,7 @@ type Config struct {
 	FailOn      string   `yaml:"fail_on"`
 }
 
-// Load reads a config file from the given path.
+// Load reads a config file from the given path and validates its contents.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -26,7 +29,40 @@ func Load(path string) (*Config, error) {
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("config validation: %w", err)
 	}
 	return &cfg, nil
+}
+
+func (c *Config) validate() error {
+	if c.SplunkURL != "" {
+		parsed, err := url.Parse(c.SplunkURL)
+		if err != nil {
+			return fmt.Errorf("invalid splunk_url: %w", err)
+		}
+		if parsed.Scheme != "https" {
+			return fmt.Errorf("splunk_url must use HTTPS (got %q)", parsed.Scheme)
+		}
+	}
+
+	validFormats := map[string]bool{"": true, "table": true, "json": true, "splunk": true}
+	if !validFormats[strings.ToLower(c.Format)] {
+		return fmt.Errorf("invalid format %q: must be table, json, or splunk", c.Format)
+	}
+
+	validSevs := map[string]bool{"critical": true, "high": true, "medium": true, "low": true, "info": true}
+	for _, sev := range c.Severity {
+		if !validSevs[strings.ToLower(sev)] {
+			return fmt.Errorf("invalid severity %q: must be critical, high, medium, low, or info", sev)
+		}
+	}
+
+	if c.FailOn != "" && !validSevs[strings.ToLower(c.FailOn)] {
+		return fmt.Errorf("invalid fail_on %q: must be critical, high, medium, low, or info", c.FailOn)
+	}
+
+	return nil
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pfrederiksen/mcpsec/internal/output"
@@ -46,7 +47,15 @@ func main() {
 			s := scanner.New()
 
 			if rulesDir != "" {
-				if err := s.LoadRules(rulesDir); err != nil {
+				cleanDir := filepath.Clean(rulesDir)
+				info, err := os.Stat(cleanDir)
+				if err != nil {
+					return fmt.Errorf("rules directory: %w", err)
+				}
+				if !info.IsDir() {
+					return fmt.Errorf("rules path is not a directory: %s", cleanDir)
+				}
+				if err := s.LoadRules(cleanDir); err != nil {
 					return fmt.Errorf("loading rules: %w", err)
 				}
 			}
@@ -85,7 +94,13 @@ func main() {
 
 			w := os.Stdout
 			if outputFlag != "" {
-				f, err := os.Create(outputFlag)
+				cleanPath := filepath.Clean(outputFlag)
+				// Verify output directory exists and is writable
+				outDir := filepath.Dir(cleanPath)
+				if info, err := os.Stat(outDir); err != nil || !info.IsDir() {
+					return fmt.Errorf("output directory does not exist: %s", outDir)
+				}
+				f, err := os.Create(cleanPath)
 				if err != nil {
 					return fmt.Errorf("creating output file: %w", err)
 				}
@@ -104,10 +119,16 @@ func main() {
 				}
 			case "splunk":
 				token := splunkToken
+				if token != "" {
+					_, _ = fmt.Fprintln(os.Stderr, "Warning: --splunk-token is visible in process listings; prefer MCPSEC_SPLUNK_TOKEN env var")
+				}
 				if token == "" {
 					token = os.Getenv("MCPSEC_SPLUNK_TOKEN")
 				}
 				if splunkURL != "" && token != "" {
+					if err := output.ValidateHECURL(splunkURL); err != nil {
+						return err
+					}
 					if err := output.WriteSplunk(findings, version, splunkURL, token, splunkIndex); err != nil {
 						return err
 					}

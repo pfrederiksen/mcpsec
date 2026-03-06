@@ -272,16 +272,18 @@ func (s *Scanner) scanDXTDirectory(dir string) (*ScanResult, error) {
 		manifestPath := filepath.Join(dir, entry.Name(), "manifest.json")
 		data, err := os.ReadFile(manifestPath)
 		if err != nil {
-			continue // Skip dirs without manifest.json
+			continue // No manifest.json — not a DXT extension
 		}
 
 		config, err := parseDXTManifest(data)
 		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", entry.Name(), err)
 			continue
 		}
 
 		sub, err := s.scanConfig(config, data, entry.Name())
 		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: error scanning %s: %v\n", entry.Name(), err)
 			continue
 		}
 		result.Findings = append(result.Findings, sub.Findings...)

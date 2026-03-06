@@ -2,10 +2,12 @@ package output
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -106,7 +108,26 @@ func WriteSplunkToWriter(w io.Writer, findings []FindingInput, version string) e
 	return nil
 }
 
+// ValidateHECURL checks that a Splunk HEC URL uses HTTPS.
+func ValidateHECURL(hecURL string) error {
+	parsed, err := url.Parse(hecURL)
+	if err != nil {
+		return fmt.Errorf("invalid HEC URL: %w", err)
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("HEC URL must use HTTPS (got %q)", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("HEC URL must include a host")
+	}
+	return nil
+}
+
 func sendToHEC(hecURL, hecToken string, body []byte) (retErr error) {
+	if err := ValidateHECURL(hecURL); err != nil {
+		return err
+	}
+
 	req, err := http.NewRequest("POST", hecURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating HEC request: %w", err)
@@ -114,7 +135,14 @@ func sendToHEC(hecURL, hecToken string, body []byte) (retErr error) {
 	req.Header.Set("Authorization", "Splunk "+hecToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending to HEC: %w", err)
@@ -125,8 +153,12 @@ func sendToHEC(hecURL, hecToken string, body []byte) (retErr error) {
 		}
 	}()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HEC returned status %d", resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if readErr != nil {
+			return fmt.Errorf("HEC returned status %d (could not read response body)", resp.StatusCode)
+		}
+		return fmt.Errorf("HEC returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
 }
