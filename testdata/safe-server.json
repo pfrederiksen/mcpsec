@@ -1,0 +1,47 @@
+{
+  "mcpServers": {
+    "secure-demo": {
+      "command": "node",
+      "args": ["server.js"],
+      "url": "https://api.example.com/mcp",
+      "transport": "https",
+      "env": {
+        "NODE_ENV": "production",
+        "LOG_LEVEL": "info"
+      },
+      "permissions": ["read:analytics", "write:reports"],
+      "auth": {
+        "type": "oauth2"
+      },
+      "tls": {
+        "enabled": true,
+        "certFile": "/etc/ssl/certs/mcp.pem",
+        "keyFile": "/etc/ssl/private/mcp.key",
+        "minVersion": "1.3"
+      },
+      "schema": {
+        "validateInput": true,
+        "validateOutput": true
+      },
+      "logging": {
+        "enabled": true,
+        "level": "info",
+        "audit": true
+      },
+      "rateLimit": {
+        "enabled": true,
+        "maxRequestsPerSecond": 100,
+        "maxPayloadBytes": 1048576
+      },
+      "tools": [
+        {
+          "name": "get_analytics",
+          "description": "Retrieve analytics data for the specified time range",
+          "inputSchema": {"type": "object", "properties": {"startDate": {"type": "string"}, "endDate": {"type": "string"}}, "required": ["startDate", "endDate"]},
+          "permissions": ["read:analytics"],
+          "hash": "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+        }
+      ]
+    }
+  }
+}

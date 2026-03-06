@@ -1,0 +1,23 @@
+id: MCP07-R01
+name: Insecure HTTP Transport
+severity: high
+owasp_mcp: MCP07
+description: |
+  Detects MCP server URLs or transport configurations using plaintext HTTP
+  instead of HTTPS. Unencrypted transport exposes tool invocations, secrets,
+  and data to eavesdropping and man-in-the-middle attacks.
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers.*.url"
+  pattern: "^http://[^s]"
+  type: regex
+remediation: |
+  Always use HTTPS for MCP server transport. Configure TLS 1.2 or higher
+  (preferably TLS 1.3) with valid certificates. Example:
+    "url": "https://api.example.com/mcp",
+    "tls": {
+      "enabled": true,
+      "minVersion": "1.3"
+    }
+  Reject any connections over plaintext HTTP in production environments.

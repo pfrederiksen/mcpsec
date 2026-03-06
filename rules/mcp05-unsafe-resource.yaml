@@ -1,0 +1,20 @@
+id: MCP05-R01
+name: Unsafe Resource Access via SSRF-Prone URIs
+severity: high
+owasp_mcp: MCP05
+description: |
+  Detects tool or server URIs that reference internal IP addresses, localhost,
+  cloud metadata endpoints (169.254.169.254), or file:// protocol URIs.
+  These patterns indicate server-side request forgery (SSRF) risks or
+  unauthorized local filesystem access.
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers..uri"
+  pattern: "file://|169\\.254\\.169\\.254|localhost|127\\.0\\.0\\.1|10\\.\\d+\\.\\d+\\.\\d+|172\\.(1[6-9]|2\\d|3[01])\\.\\d+\\.\\d+|192\\.168\\.\\d+\\.\\d+"
+  type: regex
+remediation: |
+  Restrict tool URIs to approved external HTTPS endpoints only. Implement
+  an allowlist of permitted hostnames and block access to private IP ranges,
+  link-local addresses (169.254.x.x), and file:// URIs. Use network-level
+  controls to prevent SSRF attacks from MCP tool invocations.

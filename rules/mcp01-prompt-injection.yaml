@@ -1,0 +1,20 @@
+id: MCP01-R01
+name: Prompt Injection in Tool Descriptions
+severity: high
+owasp_mcp: MCP01
+description: |
+  Detects potential prompt injection attacks embedded in MCP tool descriptions
+  or other string fields. Attackers may insert directives like "ignore previous
+  instructions", "act as", or "disregard" to manipulate LLM behavior when it
+  reads tool metadata.
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers.*.tools[*].description"
+  pattern: "ignore previous|disregard|act as|system prompt|forget (all|your|prior)|override instructions|you are now|new role"
+  type: regex
+remediation: |
+  Sanitize all tool descriptions and metadata fields before registration.
+  Implement input validation that rejects descriptions containing known
+  prompt injection patterns. Use allowlists for description content where
+  possible and review tool descriptions during code review.

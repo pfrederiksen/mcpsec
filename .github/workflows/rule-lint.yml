@@ -1,0 +1,26 @@
+name: Rule Lint
+
+on:
+  pull_request:
+    paths:
+      - "rules/**/*.yml"
+      - "rules/**/*.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-rules:
+    name: Validate Rule YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: Lint rule YAML files
+        run: yamllint -c .yamllint.yml rules/
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Validate rule schema
+        run: go run ./cmd/rule-validate ./rules/

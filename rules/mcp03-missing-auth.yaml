@@ -1,0 +1,22 @@
+id: MCP03-R01
+name: Missing Authentication Configuration
+severity: critical
+owasp_mcp: MCP03
+description: |
+  Detects MCP server configurations that lack an authentication block.
+  Servers without authentication allow unauthenticated access to tools
+  and resources, potentially exposing sensitive operations to unauthorized
+  users or agents.
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers.*"
+  pattern: "^(?!.*\"auth\"\\s*:).*$"
+  type: regex
+remediation: |
+  Add an authentication configuration block to every MCP server definition.
+  Use industry-standard authentication mechanisms such as OAuth2, API keys
+  with proper rotation, or mutual TLS. Example:
+    "auth": {
+      "type": "oauth2"
+    }

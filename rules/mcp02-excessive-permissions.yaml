@@ -1,0 +1,20 @@
+id: MCP02-R01
+name: Excessive or Wildcard Permissions
+severity: critical
+owasp_mcp: MCP02
+description: |
+  Detects tools or servers configured with wildcard (*) permissions,
+  full_access grants, or admin-level privileges. Overly broad permissions
+  violate the principle of least privilege and allow tools to perform
+  actions beyond their intended scope.
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers.*.tools[*].permissions[*]"
+  pattern: "^\\*$|full_access|^admin$"
+  type: regex
+remediation: |
+  Apply the principle of least privilege to all tool permissions. Replace
+  wildcard (*) permissions with specific, scoped permissions such as
+  "read:analytics" or "write:reports". Regularly audit permission grants
+  and remove any unnecessary elevated privileges.

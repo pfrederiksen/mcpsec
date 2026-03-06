@@ -1,0 +1,21 @@
+id: MCP06-R01
+name: Missing Tool Integrity Hash
+severity: high
+owasp_mcp: MCP06
+description: |
+  Detects tools that lack a cryptographic hash field for integrity
+  verification. Without a hash, there is no way to verify that a tool's
+  implementation has not been tampered with or replaced by a malicious
+  version (tool spoofing).
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers.*.tools[*]"
+  pattern: "^(?!.*\"hash\"\\s*:).*$"
+  type: regex
+remediation: |
+  Add a cryptographic hash to every tool definition to enable integrity
+  verification. Use SHA-256 or stronger. Example:
+    "hash": "sha256:a1b2c3d4..."
+  Verify tool hashes at registration time and before each invocation to
+  detect tampering or unauthorized tool replacement.

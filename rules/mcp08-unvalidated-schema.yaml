@@ -1,0 +1,26 @@
+id: MCP08-R01
+name: Missing Input Schema Validation
+severity: medium
+owasp_mcp: MCP08
+description: |
+  Detects tools that lack an inputSchema definition. Without input schema
+  validation, tools accept arbitrary input which may lead to injection
+  attacks, unexpected behavior, or data corruption.
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers.*.tools[*]"
+  pattern: "^(?!.*\"inputSchema\"\\s*:).*$"
+  type: regex
+remediation: |
+  Define a JSON Schema inputSchema for every tool that validates all
+  expected parameters, types, and constraints. Example:
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {"type": "string", "maxLength": 1000}
+      },
+      "required": ["query"],
+      "additionalProperties": false
+    }
+  Reject any tool invocation that does not conform to its declared schema.

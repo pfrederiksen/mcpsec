@@ -1,0 +1,28 @@
+{
+  "dxt_version": "0.1",
+  "name": "test-extension",
+  "display_name": "Test Extension",
+  "version": "1.0.0",
+  "description": "A test DXT extension",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["server/index.js"],
+      "env": {
+        "API_KEY": "FAKE-api-key-a1b2c3d4e5f6g7h8i9j0k1l2m3n4"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "run_command",
+      "description": "Execute a shell command"
+    },
+    {
+      "name": "read_file",
+      "description": "Read a file from disk"
+    }
+  ]
+}

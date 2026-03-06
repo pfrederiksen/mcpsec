@@ -1,0 +1,127 @@
+<dashboard version="1.1">
+  <label>MCP Security Posture</label>
+  <description>OWASP MCP Top 10 security findings from mcpsec scans</description>
+
+  <row>
+    <panel>
+      <title>Findings by Severity</title>
+      <chart>
+        <search>
+          <query>
+            index=mcpsec sourcetype=_json
+            | spath output=severity_id path=severity_id
+            | eval severity=case(
+                severity_id=1, "Info",
+                severity_id=2, "Low",
+                severity_id=3, "Medium",
+                severity_id=4, "High",
+                severity_id=5, "Critical",
+                true(), "Unknown"
+              )
+            | stats count by severity
+            | sort -count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.fieldColors">{"Critical": 0xD41F1F, "High": 0xF26A35, "Medium": 0xFBB938, "Low": 0x6DB7C6, "Info": 0x65A637}</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Findings by OWASP MCP Category</title>
+      <chart>
+        <search>
+          <query>
+            index=mcpsec sourcetype=_json
+            | spath output=rule_id path=finding_info.uid
+            | eval category=case(
+                rule_id="MCP-01", "Tool Poisoning",
+                rule_id="MCP-02", "Excessive Permissions",
+                rule_id="MCP-03", "Tool Shadowing",
+                rule_id="MCP-04", "Rug Pull Attacks",
+                rule_id="MCP-05", "Auth Bypass",
+                rule_id="MCP-06", "Implicit Trust",
+                rule_id="MCP-07", "Config Injection",
+                rule_id="MCP-08", "Insecure Storage",
+                rule_id="MCP-09", "Insufficient Logging",
+                rule_id="MCP-10", "Resource Exhaustion",
+                true(), "Other"
+              )
+            | stats count by category
+            | sort -count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top Affected Servers</title>
+      <chart>
+        <search>
+          <query>
+            index=mcpsec sourcetype=_json
+            | spath output=server_name path=resource.name
+            | stats count by server_name
+            | sort -count
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.axisTitleX.text">Server</option>
+        <option name="charting.axisTitleY.text">Findings</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Recent Findings</title>
+      <table>
+        <search>
+          <query>
+            index=mcpsec sourcetype=_json
+            | spath output=rule_id path=finding_info.uid
+            | spath output=title path=finding_info.title
+            | spath output=description path=finding_info.desc
+            | spath output=severity_id path=severity_id
+            | spath output=server_name path=resource.name
+            | eval severity=case(
+                severity_id=1, "Info",
+                severity_id=2, "Low",
+                severity_id=3, "Medium",
+                severity_id=4, "High",
+                severity_id=5, "Critical",
+                true(), "Unknown"
+              )
+            | table _time, rule_id, title, severity, server_name, description
+            | sort -_time
+            | head 50
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="wrap">true</option>
+        <format type="color" field="severity">
+          <colorPalette type="map">{"Critical": #D41F1F, "High": #F26A35, "Medium": #FBB938, "Low": #6DB7C6, "Info": #65A637}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

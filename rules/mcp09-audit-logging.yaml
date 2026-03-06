@@ -1,0 +1,24 @@
+id: MCP09-R01
+name: Missing Audit Logging Configuration
+severity: medium
+owasp_mcp: MCP09
+description: |
+  Detects MCP server configurations that lack a logging block with audit
+  capabilities. Without audit logging, tool invocations and security events
+  cannot be traced, making incident response and forensic analysis impossible.
+references:
+  - https://owasp.org/www-project-mcp-top-10/
+match:
+  path: "$.mcpServers.*"
+  pattern: "^(?!.*\"logging\"\\s*:).*$"
+  type: regex
+remediation: |
+  Add a logging configuration block to every MCP server with audit logging
+  enabled. Example:
+    "logging": {
+      "enabled": true,
+      "level": "info",
+      "audit": true
+    }
+  Ensure logs capture tool invocations, authentication events, permission
+  checks, and errors. Send logs to a centralized, tamper-evident log store.
