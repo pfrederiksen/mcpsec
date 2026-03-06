@@ -1,0 +1,130 @@
+name: "MCPSec Audit"
+description: "OWASP MCP Top 10 security scanner for Model Context Protocol server configurations"
+author: "pfrederiksen"
+
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  config:
+    description: "Path to the MCP config file or directory to scan"
+    required: true
+  format:
+    description: "Output format: table, json, splunk"
+    required: false
+    default: "table"
+  severity:
+    description: "Filter by severity (comma-separated: critical,high,medium,low,info)"
+    required: false
+  fail-on:
+    description: "Exit with code 1 if findings at or above this severity (critical,high,medium,low,info)"
+    required: false
+  rules:
+    description: "Path to custom rules directory"
+    required: false
+  input-format:
+    description: "Input format: auto, mcpservers, dxt, dxtdir"
+    required: false
+    default: "auto"
+  output:
+    description: "Output file path (findings are also printed to stdout)"
+    required: false
+  version:
+    description: "MCPSec version to install (default: latest)"
+    required: false
+    default: "latest"
+
+outputs:
+  findings-count:
+    description: "Number of findings detected"
+    value: ${{ steps.scan.outputs.findings-count }}
+  results-file:
+    description: "Path to the output file (if --output was used)"
+    value: ${{ steps.scan.outputs.results-file }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install MCPSec
+      id: install
+      shell: bash
+      env:
+        MCPSEC_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        REPO="pfrederiksen/mcpsec"
+
+        # Determine OS and arch
+        OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        ARCH="$(uname -m)"
+        case "$ARCH" in
+          x86_64)  ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+          arm64)   ARCH="arm64" ;;
+        esac
+
+        # Determine version
+        if [ "$MCPSEC_VERSION" = "latest" ]; then
+          MCPSEC_VERSION="$(gh release view --repo "$REPO" --json tagName -q '.tagName')"
+        fi
+        VERSION_NUM="${MCPSEC_VERSION#v}"
+
+        # Download and extract
+        ARCHIVE="mcpsec_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
+        URL="https://github.com/${REPO}/releases/download/${MCPSEC_VERSION}/${ARCHIVE}"
+
+        echo "Downloading MCPSec ${MCPSEC_VERSION} for ${OS}/${ARCH}..."
+        INSTALL_DIR="${RUNNER_TEMP}/mcpsec"
+        mkdir -p "$INSTALL_DIR"
+        curl -sSfL "$URL" | tar -xz -C "$INSTALL_DIR"
+        echo "${INSTALL_DIR}" >> "$GITHUB_PATH"
+        echo "Installed mcpsec ${MCPSEC_VERSION}"
+
+    - name: Run MCPSec scan
+      id: scan
+      shell: bash
+      env:
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_SEVERITY: ${{ inputs.severity }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_RULES: ${{ inputs.rules }}
+        INPUT_INPUT_FORMAT: ${{ inputs.input-format }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+      run: |
+        set -uo pipefail
+
+        ARGS=("scan")
+        ARGS+=("$INPUT_CONFIG")
+        ARGS+=("--format" "$INPUT_FORMAT")
+        ARGS+=("--input-format" "$INPUT_INPUT_FORMAT")
+
+        if [ -n "$INPUT_SEVERITY" ]; then
+          ARGS+=("--severity" "$INPUT_SEVERITY")
+        fi
+        if [ -n "$INPUT_FAIL_ON" ]; then
+          ARGS+=("--fail-on" "$INPUT_FAIL_ON")
+        fi
+        if [ -n "$INPUT_RULES" ]; then
+          ARGS+=("--rules" "$INPUT_RULES")
+        fi
+        if [ -n "$INPUT_OUTPUT" ]; then
+          ARGS+=("--output" "$INPUT_OUTPUT")
+          echo "results-file=$INPUT_OUTPUT" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Run scan, capture output and count findings
+        OUTPUT=$(mcpsec "${ARGS[@]}" 2>&1) || EXIT_CODE=$?
+        echo "$OUTPUT"
+
+        # Extract findings count from table output
+        COUNT=$(echo "$OUTPUT" | grep -oP 'Total: \K[0-9]+' || echo "0")
+        echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
+
+        # If --fail-on triggered exit code 1, propagate it
+        if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+          echo "::error::MCPSec found findings at or above the --fail-on threshold"
+          exit "$EXIT_CODE"
+        fi

@@ -46,6 +46,17 @@ cd mcpsec
 make build
 ```
 
+### GitHub Action
+
+```yaml
+- uses: pfrederiksen/mcpsec@v1
+  with:
+    config: path/to/mcp-config.json
+    fail-on: high
+```
+
+See [GitHub Action usage](#github-action) below for full options.
+
 ---
 
 ## Quick Start
@@ -266,6 +277,98 @@ mcpsec rules list
 
 ```bash
 mcpsec rules validate rules/mcp04-secret-exposure.yaml
+```
+
+---
+
+## GitHub Action
+
+MCPSec is available as a GitHub Action on the [GitHub Marketplace](https://github.com/marketplace/actions/mcpsec-audit). Add it to any workflow to scan MCP configs on every push or pull request.
+
+### Basic usage
+
+```yaml
+name: MCP Security Scan
+
+on: [push, pull_request]
+
+jobs:
+  mcpsec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pfrederiksen/mcpsec@v1
+        with:
+          config: mcp-config.json
+          fail-on: high
+```
+
+### Full options
+
+```yaml
+- uses: pfrederiksen/mcpsec@v1
+  with:
+    # Required: path to MCP config file or directory
+    config: path/to/mcp-config.json
+
+    # Output format: table, json, splunk (default: table)
+    format: json
+
+    # Filter by severity (comma-separated)
+    severity: critical,high
+
+    # Fail the step if findings at or above this severity
+    fail-on: high
+
+    # Custom rules directory
+    rules: ./my-rules/
+
+    # Input format: auto, mcpservers, dxt, dxtdir (default: auto)
+    input-format: auto
+
+    # Save findings to a file
+    output: findings.json
+
+    # MCPSec version to install (default: latest)
+    version: latest
+```
+
+### Action outputs
+
+| Output | Description |
+|--------|-------------|
+| `findings-count` | Number of findings detected |
+| `results-file` | Path to the output file (if `output` was set) |
+
+### Example: upload findings as artifact
+
+```yaml
+jobs:
+  mcpsec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pfrederiksen/mcpsec@v1
+        id: scan
+        with:
+          config: mcp-config.json
+          format: json
+          output: mcpsec-findings.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcpsec-findings
+          path: mcpsec-findings.json
+```
+
+### Example: scan DXT extensions in CI
+
+```yaml
+- uses: pfrederiksen/mcpsec@v1
+  with:
+    config: extensions/
+    input-format: dxtdir
+    fail-on: critical
 ```
 
 ---
