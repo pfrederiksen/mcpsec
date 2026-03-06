@@ -33,6 +33,7 @@ jobs:
     name: Update Major Version Tag
     runs-on: ubuntu-latest
     needs: goreleaser
+    if: always() && needs.goreleaser.result != 'cancelled'
     steps:
       - uses: actions/checkout@v4
       - name: Update major version tag
