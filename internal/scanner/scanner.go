@@ -11,15 +11,6 @@ import (
 	"github.com/pfrederiksen/mcpsec/internal/rules"
 )
 
-// Severity levels ordered by priority.
-var severityOrder = map[string]int{
-	"critical": 0,
-	"high":     1,
-	"medium":   2,
-	"low":      3,
-	"info":     4,
-}
-
 // Finding represents a single security finding from a scan.
 type Finding struct {
 	RuleID      string `json:"rule_id"`
