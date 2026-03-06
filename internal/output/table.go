@@ -7,10 +7,10 @@ import (
 )
 
 // WriteTable writes findings as a human-readable table to the given writer.
-func WriteTable(w io.Writer, findings []FindingInput) {
+func WriteTable(w io.Writer, findings []FindingInput) error {
 	if len(findings) == 0 {
-		fmt.Fprintln(w, "No findings.")
-		return
+		_, err := fmt.Fprintln(w, "No findings.")
+		return err
 	}
 
 	// Column widths
@@ -19,9 +19,15 @@ func WriteTable(w io.Writer, findings []FindingInput) {
 	header := fmt.Sprintf("%-*s %-*s %-*s %-*s", idW, "RULE ID", nameW, "NAME", sevW, "SEVERITY", resW, "RESOURCE")
 	separator := strings.Repeat("-", idW+nameW+sevW+resW+3)
 
-	fmt.Fprintln(w, separator)
-	fmt.Fprintln(w, header)
-	fmt.Fprintln(w, separator)
+	if _, err := fmt.Fprintln(w, separator); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, header); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, separator); err != nil {
+		return err
+	}
 
 	for _, f := range findings {
 		name := f.Name
@@ -33,11 +39,16 @@ func WriteTable(w io.Writer, findings []FindingInput) {
 			resource = resource[:resW-3] + "..."
 		}
 		sev := colorSeverity(f.Severity)
-		fmt.Fprintf(w, "%-*s %-*s %-*s %-*s\n", idW, f.RuleID, nameW, name, sevW, sev, resW, resource)
+		if _, err := fmt.Fprintf(w, "%-*s %-*s %-*s %-*s\n", idW, f.RuleID, nameW, name, sevW, sev, resW, resource); err != nil {
+			return err
+		}
 	}
 
-	fmt.Fprintln(w, separator)
-	fmt.Fprintf(w, "Total: %d finding(s)\n", len(findings))
+	if _, err := fmt.Fprintln(w, separator); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(w, "Total: %d finding(s)\n", len(findings))
+	return err
 }
 
 func colorSeverity(sev string) string {

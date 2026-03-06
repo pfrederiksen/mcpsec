@@ -42,7 +42,7 @@ func main() {
 		Use:   "scan [config-file]",
 		Short: "Scan an MCP server configuration file",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			s := scanner.New()
 
 			if rulesDir != "" {
@@ -89,7 +89,11 @@ func main() {
 				if err != nil {
 					return fmt.Errorf("creating output file: %w", err)
 				}
-				defer f.Close()
+				defer func() {
+					if cerr := f.Close(); cerr != nil && retErr == nil {
+						retErr = cerr
+					}
+				}()
 				w = f
 			}
 
@@ -108,7 +112,7 @@ func main() {
 						return err
 					}
 					if !quiet {
-						fmt.Fprintf(os.Stderr, "Sent %d finding(s) to Splunk HEC\n", len(findings))
+						_, _ = fmt.Fprintf(os.Stderr, "Sent %d finding(s) to Splunk HEC\n", len(findings))
 					}
 				} else {
 					if err := output.WriteSplunkToWriter(w, findings, version); err != nil {
@@ -117,7 +121,9 @@ func main() {
 				}
 			default:
 				if !quiet {
-					output.WriteTable(w, findings)
+					if err := output.WriteTable(w, findings); err != nil {
+						return err
+					}
 				}
 			}
 

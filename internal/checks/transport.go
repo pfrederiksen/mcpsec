@@ -38,8 +38,8 @@ func (c *TransportCheck) Run(ctx CheckContext) []CheckFinding {
 
 	// Check TLS configuration
 	if ctx.Server.URL != "" {
-		parsed, _ := url.Parse(ctx.Server.URL)
-		if parsed != nil && (parsed.Scheme == "https" || parsed.Scheme == "wss") {
+		parsed, err := url.Parse(ctx.Server.URL)
+		if err == nil && parsed != nil && (parsed.Scheme == "https" || parsed.Scheme == "wss") {
 			if ctx.Server.TLS != nil && !ctx.Server.TLS.Enabled {
 				findings = append(findings, CheckFinding{
 					RuleID:      "MCP07-002",

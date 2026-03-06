@@ -106,7 +106,7 @@ func WriteSplunkToWriter(w io.Writer, findings []FindingInput, version string) e
 	return nil
 }
 
-func sendToHEC(hecURL, hecToken string, body []byte) error {
+func sendToHEC(hecURL, hecToken string, body []byte) (retErr error) {
 	req, err := http.NewRequest("POST", hecURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating HEC request: %w", err)
@@ -119,7 +119,11 @@ func sendToHEC(hecURL, hecToken string, body []byte) error {
 	if err != nil {
 		return fmt.Errorf("sending to HEC: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HEC returned status %d", resp.StatusCode)
