@@ -1,3 +1,5 @@
+![MCPSec Audit banner](docs/assets/mcpsec-banner.png)
+
 [![CI](https://github.com/pfrederiksen/mcpsec/actions/workflows/ci.yml/badge.svg)](https://github.com/pfrederiksen/mcpsec/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pfrederiksen/mcpsec)](https://goreportcard.com/report/github.com/pfrederiksen/mcpsec)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -12,7 +14,7 @@ MCPSec audits MCP server definition files for security risks, outputs findings i
 
 ## Use Cases
 
-- **Developer laptop audit** -- Scan your Claude Desktop, Cursor, or VS Code MCP configs to find hardcoded API keys, missing auth, and overly broad permissions before they leak
+- **Developer laptop audit** -- Scan your Claude Desktop, Cursor, or VS Code MCP configs to find hardcoded API keys, unauthenticated remote servers, and overly broad permissions before they leak
 - **CI/CD gate** -- Add `mcpsec scan --fail-on high` to your pipeline to block deploys with critical or high-severity MCP misconfigurations
 - **Security team posture assessment** -- Scan all MCP configs across your org, output OCSF JSON to your SIEM, and track risk posture over time
 - **Claude Desktop Extension (DXT) review** -- Audit DXT manifests or your entire Extensions directory for tool spoofing, missing schemas, and integrity violations
@@ -161,6 +163,8 @@ MCPSec auto-detects config formats. You can also specify explicitly with `--inpu
 | DXT directory | `--input-format dxtdir` | Directory of DXT extensions | `Claude Extensions/` |
 | Auto (default) | `--input-format auto` | Detects format from file content/structure | Any of the above |
 
+Inputs must contain at least one MCP server. Duplicate JSON keys, unsupported formats, malformed DXT manifests, and files larger than 10 MiB are rejected rather than treated as clean scans. Directory scans fail if an extension manifest exists but cannot be read or parsed.
+
 ---
 
 ## OWASP MCP Top 10 Coverage
@@ -179,6 +183,8 @@ All 10 categories are implemented with built-in Go checks and YAML rules:
 | MCP08 | Unvalidated Tool Input Schemas | MCP08-001..002 | Medium | Flags tools without input schemas, disabled validation |
 | MCP09 | Logging and Audit Deficiencies | MCP09-001..003 | Medium/High | Detects missing or disabled logging and audit trails |
 | MCP10 | Denial of Service | MCP10-001..002 | Medium | Flags missing rate limiting and payload size limits |
+
+Authentication, audit-logging, and rate-limit checks apply to network transports. Command-only and `stdio` servers are local child processes and are not reported as unauthenticated network services.
 
 ---
 
@@ -389,15 +395,21 @@ description: |
 references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
-  path: "$.tools[*].environment[*]"
+  path: "$.mcpServers.*..env"
   pattern: "(api[_-]?key|secret|token|password)\\s*[:=]\\s*['\"]?[A-Za-z0-9+/]{20,}"
-  type: regex
+  type: jsonpath
 remediation: |
   Move secrets to a secrets manager and inject at runtime via
   environment variable references, not literals.
 ```
 
-Rules live in the `rules/` directory and are automatically loaded. Drop a new `.yaml` file in and it takes effect immediately -- no recompilation needed.
+Rules live in the `rules/` directory. Load a rule directory explicitly with `--rules`; no recompilation is needed:
+
+```bash
+mcpsec scan --rules ./rules mcp-config.json
+```
+
+Rules are strictly validated when loaded. Unknown fields, duplicate IDs, invalid regexes, unsupported match types, multiple YAML documents, and rule files larger than 1 MiB are rejected.
 
 See [docs/rules-authoring.md](docs/rules-authoring.md) for the full authoring guide.
 
@@ -408,9 +420,10 @@ See [docs/rules-authoring.md](docs/rules-authoring.md) for the full authoring gu
 MCPSec includes a Splunk HEC output mode and a bundled Splunk app with a pre-built MCP Security Posture dashboard.
 
 ```bash
+export MCPSEC_SPLUNK_TOKEN="your-hec-token"
+
 mcpsec scan --format splunk \
   --splunk-url https://your-splunk:8088 \
-  --splunk-token "$MCPSEC_SPLUNK_TOKEN" \
   --splunk-index mcpsec \
   mcp-config.json
 ```
@@ -425,7 +438,7 @@ MCPSec uses a dual-layer detection engine:
 
 1. **Go checks** (`internal/checks/`) -- Compiled, type-safe checks that understand MCP server config structure. These perform semantic analysis (duplicate tool names, TLS version validation, credential pattern matching).
 
-2. **YAML rules** (`rules/`) -- Regex/JSONPath-based rules that scan raw config text. Community-contributable without Go knowledge, following the Sigma model used in SIEM detections.
+2. **YAML rules** (`rules/`) -- Optional regex/JSONPath rules loaded with `--rules`. Rules execute against one parsed server at a time, preventing matches from being attributed to unrelated servers.
 
 Both layers feed into the same Finding -> OCSF output pipeline.
 

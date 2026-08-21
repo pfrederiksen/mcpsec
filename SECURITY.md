@@ -2,10 +2,10 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| latest  | Yes                |
-| < 1.0   | No                 |
+| Version | Supported |
+|---------|-----------|
+| Latest minor release | Yes |
+| Older releases | No |
 
 ## Reporting a Vulnerability
 
@@ -15,9 +15,7 @@ We take security issues in mcpsec seriously. If you discover a security vulnerab
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please send a detailed report to:
-
-**security@mcpsec**
+Use [GitHub private vulnerability reporting](https://github.com/pfrederiksen/mcpsec/security/advisories/new) to send the maintainers a confidential report.
 
 ### What to Include
 

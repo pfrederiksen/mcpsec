@@ -41,12 +41,15 @@ MCPSec can send scan results directly to Splunk via HTTP Event Collector (HEC) a
 ### Direct HEC Output
 
 ```bash
+export MCPSEC_SPLUNK_TOKEN="your-hec-token"
+
 mcpsec scan --format splunk \
   --splunk-url https://your-splunk:8088 \
-  --splunk-token your-hec-token \
   --splunk-index mcpsec \
   mcp-config.json
 ```
+
+Prefer `MCPSEC_SPLUNK_TOKEN` because command-line token values can be exposed through process listings. The `--splunk-token` flag remains available for compatibility and emits a warning.
 
 ### Using Environment Variables
 

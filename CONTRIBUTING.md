@@ -72,6 +72,8 @@ MCPSec uses YAML-based rules for community-contributed detections. See [docs/rul
 - [ ] Rule matches `testdata/vulnerable-server.json` (when applicable)
 - [ ] Rule does NOT match `testdata/safe-server.json`
 - [ ] `mcpsec rules validate your-rule.yaml` passes
+- [ ] Regexes use Go syntax (no lookarounds); absence checks use `not_regex`
+- [ ] Network-only rules set `scope: remote`
 - [ ] Rule description and remediation are clear and actionable
 
 ## Writing Go Checks

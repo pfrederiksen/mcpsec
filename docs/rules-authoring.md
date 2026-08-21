@@ -18,9 +18,9 @@ description: |
 references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
-  path: "$.tools[*].environment[*]"    # JSONPath (optional, for documentation)
+  path: "$.mcpServers.*..env"          # Required for jsonpath/not_regex
   pattern: "(api[_-]?key|secret)\\s*[:=]\\s*['\"]?[A-Za-z0-9+/]{20,}"
-  type: regex   # regex | jsonpath
+  type: jsonpath   # regex | jsonpath | not_regex
 remediation: |
   Multi-line remediation guidance.
 ```
@@ -38,15 +38,15 @@ remediation: |
 | `match` | Yes | Detection logic (see below) |
 | `match.type` | Yes | Match type: `regex`, `jsonpath`, or `not_regex` |
 | `scope` | No | `remote` to run only against network servers; omitted/`any` runs against all servers |
-| `match.pattern` | Yes | Regex pattern or JSONPath expression |
-| `match.path` | No | JSONPath to the config element being matched |
+| `match.pattern` | Yes | Go-compatible regular expression |
+| `match.path` | For `jsonpath`/`not_regex` | JSONPath to the server element being matched |
 | `remediation` | Yes | Actionable fix guidance |
 
 ## Match Types
 
 ### Regex Match
 
-Scans the raw JSON config text for patterns. This is the most common match type.
+Scans the JSON representation of each individual MCP server for patterns. This is the most common match type.
 
 ```yaml
 match:
@@ -54,7 +54,7 @@ match:
   pattern: "(api[_-]?key|secret|token|password)\\s*[:=]\\s*['\"]?[A-Za-z0-9+/]{20,}"
 ```
 
-The pattern is compiled as a Go regexp and matched against the entire config file text. Use `(?i)` for case-insensitive matching.
+The pattern is compiled as a Go regexp and matched against one server at a time. Use `(?i)` for case-insensitive matching. Go regular expressions do not support lookarounds; use `not_regex` for absence checks.
 
 ### JSONPath Match
 
@@ -69,7 +69,19 @@ match:
 
 Supported JSONPath features are object fields, `*`/`[*]` wildcards, and recursive descent such as `..env`. Paths beginning with `$.mcpServers.*` are evaluated relative to each server so findings are attributed correctly.
 
-Use `not_regex` with a path to report a finding when a selected value does not contain the pattern. This supports missing-field checks without regex lookarounds, which Go regular expressions intentionally do not implement.
+### Negative Regex Match
+
+Use `not_regex` with a path to report a finding when a selected value does not contain the pattern:
+
+```yaml
+scope: remote
+match:
+  type: not_regex
+  path: "$.mcpServers.*"
+  pattern: "\"auth\"\\s*:"
+```
+
+The optional `scope: remote` limits a rule to servers with a URL or recognized network transport. Omit it, or use `scope: any`, for rules that apply to local and remote servers.
 
 ## Severity Guidelines
 
@@ -112,8 +124,8 @@ references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
   path: "$.mcpServers[*].url"
-  pattern: "\"url\"\\s*:\\s*\"http://"
-  type: regex
+  pattern: "^http://"
+  type: jsonpath
 remediation: |
   Change the server URL to use HTTPS. Configure TLS 1.2+ with
   strong cipher suites. Obtain a valid TLS certificate.

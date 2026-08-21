@@ -50,7 +50,7 @@ MCPSec uses OCSF **Security Finding** (class_uid: `2001`).
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
 | `metadata.product.name` | string | Scanner name | `"MCPSec Audit"` |
-| `metadata.version` | string | Scanner version | `"1.0.0"` |
+| `metadata.version` | string | Scanner version | `"1.1.0"` |
 
 ## Complete Example
 
@@ -80,7 +80,7 @@ MCPSec uses OCSF **Security Finding** (class_uid: `2001`).
     "product": {
       "name": "MCPSec Audit"
     },
-    "version": "1.0.0"
+    "version": "1.1.0"
   }
 }
 ```

@@ -4,7 +4,7 @@
 MCPSec Audit is an open-source CLI security scanner that implements the OWASP MCP Top 10 as automated checks against Model Context Protocol (MCP) server configurations. Think Prowler, but for MCP.
 
 ## Tech Stack
-- **Language:** Go 1.26+
+- **Language:** Go 1.25+
 - **CLI Framework:** Cobra (github.com/spf13/cobra)
 - **Testing:** testify (github.com/stretchr/testify)
 - **YAML Parsing:** gopkg.in/yaml.v3
@@ -15,7 +15,7 @@ MCPSec Audit is an open-source CLI security scanner that implements the OWASP MC
 cmd/mcpsec/main.go           -- CLI entrypoint (cobra commands: scan, rules, version)
 internal/scanner/             -- Core scan orchestration, config parsing, format auto-detection
 internal/checks/              -- 10 check implementations (one per OWASP MCP risk)
-internal/rules/               -- YAML rule loader + regex/jsonpath evaluation engine
+internal/rules/               -- Strict YAML loader + per-server regex/JSONPath/not-regex engine
 internal/output/              -- OCSF, table, and Splunk HEC formatters
 internal/config/              -- Config file parsing
 rules/                        -- YAML rule definitions (Sigma-style, 10 files)
@@ -27,7 +27,7 @@ docs/                         -- rules-authoring.md, ocsf-schema.md, splunk-inte
 ## Key Patterns
 - Each OWASP MCP risk (MCP01-MCP10) maps to a Go check in `internal/checks/` implementing the `Check` interface
 - The `Check` interface: `Run(ctx CheckContext) []CheckFinding`
-- YAML rules in `rules/` provide a second layer of detection via regex/jsonpath matching
+- YAML rules in `rules/` provide an optional second layer via `--rules`, with per-server regex, JSONPath, and negative-regex matching
 - Both built-in checks and YAML rules produce findings through the same output pipeline
 - Findings map to OCSF Security Finding (class_uid 2001) events
 - Per-tool findings (MCP06 hash, MCP08 schema) are deduplicated into single findings with counts
@@ -36,12 +36,12 @@ docs/                         -- rules-authoring.md, ocsf-schema.md, splunk-inte
 - **mcpServers JSON** -- Standard `{"mcpServers": {...}}` format (Claude Desktop, Cursor)
 - **DXT manifest** -- Claude Desktop Extension `manifest.json` with `dxt_version` field
 - **DXT directory** -- Directory containing extension subdirs with `manifest.json` files
-- Auto-detection probes for `mcpServers` key, then `dxt_version`, then directory structure
+- Auto-detection probes for a non-empty `mcpServers` object, then `dxt_version`, then directory structure; empty and unsupported inputs fail closed
 
 ## Commands
 ```bash
 go build ./...                           # Build
-go test ./... -race                      # Run all tests (36 tests)
+go test ./... -race                      # Run all tests with the race detector
 go test ./... -race -coverprofile=c.out  # Tests with coverage
 golangci-lint run                        # Lint
 make build / make test / make lint       # Makefile shortcuts
@@ -55,7 +55,7 @@ mcpsec rules validate <rule.yaml>       # Validate a rule file
 
 ## Testing Conventions
 - Table-driven tests with testify assertions
-- testdata/vulnerable-server.json must trigger all 10 OWASP MCP categories (15 findings)
+- testdata/vulnerable-server.json must trigger all 10 OWASP MCP categories
 - testdata/safe-server.json must trigger zero findings
 - testdata/dxt-manifest.json tests DXT format auto-detection
 - All tests must pass with `-race` flag
@@ -76,7 +76,6 @@ mcpsec rules validate <rule.yaml>       # Validate a rule file
 
 ## GitHub
 - Repo: github.com/pfrederiksen/mcpsec
-- Branch protection on main: require PR + passing CI
 - CI: go vet + staticcheck + golangci-lint + go test -race
 - Releases: GoReleaser on tag push (v*)
 
