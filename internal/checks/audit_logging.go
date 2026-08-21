@@ -1,6 +1,6 @@
 package checks
 
-// AuditLoggingCheck detects MCP09 — Logging and Audit Trail Deficiencies.
+// AuditLoggingCheck detects OWASP MCP08 — Lack of Audit and Telemetry.
 type AuditLoggingCheck struct{}
 
 func (c *AuditLoggingCheck) Run(ctx CheckContext) []CheckFinding {
@@ -10,23 +10,15 @@ func (c *AuditLoggingCheck) Run(ctx CheckContext) []CheckFinding {
 	}
 
 	if ctx.Server.Logging == nil {
-		findings = append(findings, CheckFinding{
-			RuleID:      "MCP09-001",
-			Name:        "No logging configuration",
-			Severity:    "medium",
-			OWASPMCP:    "MCP09",
-			Description: "MCP server has no logging configuration, making it impossible to detect and investigate security incidents.",
-			Remediation: "Enable logging with at least 'info' level and enable audit logging for all tool invocations.",
-		})
 		return findings
 	}
 
 	if !ctx.Server.Logging.Enabled {
 		findings = append(findings, CheckFinding{
-			RuleID:      "MCP09-002",
+			RuleID:      "MCP08-101",
 			Name:        "Logging explicitly disabled",
 			Severity:    "high",
-			OWASPMCP:    "MCP09",
+			OWASPMCP:    "MCP08",
 			Description: "Logging is explicitly disabled, preventing detection and investigation of security incidents.",
 			Remediation: "Enable logging and configure appropriate log levels and destinations.",
 		})
@@ -34,10 +26,10 @@ func (c *AuditLoggingCheck) Run(ctx CheckContext) []CheckFinding {
 
 	if !ctx.Server.Logging.Audit {
 		findings = append(findings, CheckFinding{
-			RuleID:      "MCP09-003",
+			RuleID:      "MCP08-102",
 			Name:        "Audit logging not enabled",
 			Severity:    "medium",
-			OWASPMCP:    "MCP09",
+			OWASPMCP:    "MCP08",
 			Description: "Audit logging is not enabled, preventing tracking of who invoked which tools and when.",
 			Remediation: "Enable audit logging to maintain a record of all tool invocations including caller identity, timestamp, and parameters.",
 		})

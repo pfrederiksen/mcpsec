@@ -30,6 +30,9 @@ inputs:
   output:
     description: "Output file path (findings are also printed to stdout)"
     required: false
+  baseline:
+    description: "Path to an approved MCPSec baseline file"
+    required: false
   version:
     description: "MCPSec version to install (default: latest)"
     required: false
@@ -109,6 +112,7 @@ runs:
         INPUT_RULES: ${{ inputs.rules }}
         INPUT_INPUT_FORMAT: ${{ inputs.input-format }}
         INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
         SUMMARY_FILE: ${{ runner.temp }}/mcpsec-summary.json
       run: |
         set -uo pipefail
@@ -131,6 +135,9 @@ runs:
         if [ -n "$INPUT_OUTPUT" ]; then
           ARGS+=("--output" "$INPUT_OUTPUT")
           echo "results-file=$INPUT_OUTPUT" >> "$GITHUB_OUTPUT"
+        fi
+        if [ -n "$INPUT_BASELINE" ]; then
+          ARGS+=("--baseline" "$INPUT_BASELINE")
         fi
 
         # Run scan, capture output and count findings

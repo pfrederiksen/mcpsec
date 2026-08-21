@@ -11,7 +11,8 @@
       },
       "permissions": ["read:analytics", "write:reports"],
       "auth": {
-        "type": "oauth2"
+        "type": "oauth2",
+        "resource": "https://api.example.com/mcp"
       },
       "tls": {
         "enabled": true,

@@ -1,23 +1,21 @@
-id: MCP03-R01
-name: Missing Authentication Configuration
-severity: critical
-owasp_mcp: MCP03
+id: MCP07-R02
+name: Explicit Authentication Block Missing Type
+severity: high
+owasp_mcp: MCP07
 scope: remote
 description: |
-  Detects MCP server configurations that lack an authentication block.
-  Servers without authentication allow unauthenticated access to tools
-  and resources, potentially exposing sensitive operations to unauthorized
-  users or agents.
+  Detects an explicitly configured authentication block that does not name
+  its mechanism. Absence of a nonstandard auth field is not treated as proof
+  that a remote implementation is unauthenticated.
 references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
-  path: "$.mcpServers.*"
-  pattern: "\"auth\"\\s*:"
+  path: "$.mcpServers.*.auth"
+  pattern: "\"type\"\\s*:"
   type: not_regex
 remediation: |
-  Add an authentication configuration block to every MCP server definition.
-  Use industry-standard authentication mechanisms such as OAuth2, API keys
-  with proper rotation, or mutual TLS. Example:
+  Specify and enforce the authentication mechanism. Prefer OAuth 2.1 for
+  remote MCP and audience-bound access tokens. Example:
     "auth": {
       "type": "oauth2"
     }

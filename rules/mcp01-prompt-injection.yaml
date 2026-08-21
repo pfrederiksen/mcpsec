@@ -1,7 +1,7 @@
-id: MCP01-R01
+id: MCP03-R01
 name: Prompt Injection in Tool Descriptions
 severity: high
-owasp_mcp: MCP01
+owasp_mcp: MCP03
 description: |
   Detects potential prompt injection attacks embedded in MCP tool descriptions
   or other string fields. Attackers may insert directives like "ignore previous

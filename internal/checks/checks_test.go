@@ -9,7 +9,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// MCP01 - Prompt Injection Check
+// MCP03 - Tool Poisoning Check
 // ---------------------------------------------------------------------------
 
 func TestPromptInjectionCheck(t *testing.T) {
@@ -33,7 +33,7 @@ func TestPromptInjectionCheck(t *testing.T) {
 				},
 			},
 			wantFind:   true,
-			wantRuleID: "MCP01-001",
+			wantRuleID: "MCP03-101",
 		},
 		{
 			name: "clean tool description - should not find",
@@ -59,7 +59,7 @@ func TestPromptInjectionCheck(t *testing.T) {
 			if tt.wantFind {
 				require.NotEmpty(t, findings, "expected at least one finding")
 				assert.Equal(t, tt.wantRuleID, findings[0].RuleID)
-				assert.Equal(t, "MCP01", findings[0].OWASPMCP)
+				assert.Equal(t, "MCP03", findings[0].OWASPMCP)
 				assert.Equal(t, "high", findings[0].Severity)
 				assert.Contains(t, findings[0].Match, "bad_tool")
 			} else {
@@ -111,7 +111,7 @@ func TestPermissionsCheck(t *testing.T) {
 			wantFind: false,
 		},
 		{
-			name: "no permissions with tools - should find",
+			name: "unspecified nonstandard permissions are not evidence",
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
@@ -121,8 +121,7 @@ func TestPermissionsCheck(t *testing.T) {
 					},
 				},
 			},
-			wantFind:   true,
-			wantRuleID: "MCP02-003",
+			wantFind: false,
 		},
 	}
 
@@ -153,7 +152,7 @@ func TestAuthCheck(t *testing.T) {
 		wantRuleID string
 	}{
 		{
-			name: "no auth configured - should find",
+			name: "standard client config cannot assert server auth",
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
@@ -161,8 +160,7 @@ func TestAuthCheck(t *testing.T) {
 					Auth: nil,
 				},
 			},
-			wantFind:   true,
-			wantRuleID: "MCP03-001",
+			wantFind: false,
 		},
 		{
 			name: "auth with type specified - should not find",
@@ -170,7 +168,7 @@ func TestAuthCheck(t *testing.T) {
 				ServerName: "test-server",
 				Server: ServerConfig{
 					URL:  "https://example.com/mcp",
-					Auth: &AuthConfig{Type: "oauth2"},
+					Auth: &AuthConfig{Type: "oauth2", Resource: "https://example.com/mcp"},
 				},
 			},
 			wantFind: false,
@@ -193,7 +191,7 @@ func TestAuthCheck(t *testing.T) {
 				},
 			},
 			wantFind:   true,
-			wantRuleID: "MCP03-002",
+			wantRuleID: "MCP07-101",
 		},
 	}
 
@@ -204,7 +202,7 @@ func TestAuthCheck(t *testing.T) {
 			if tt.wantFind {
 				require.NotEmpty(t, findings, "expected at least one finding")
 				assert.Equal(t, tt.wantRuleID, findings[0].RuleID)
-				assert.Equal(t, "MCP03", findings[0].OWASPMCP)
+				assert.Equal(t, "MCP07", findings[0].OWASPMCP)
 			} else {
 				assert.Empty(t, findings, "expected no findings")
 			}
@@ -234,7 +232,7 @@ func TestSecretsCheck(t *testing.T) {
 				},
 			},
 			wantFind:   true,
-			wantRuleID: "MCP04-001",
+			wantRuleID: "MCP01-101",
 		},
 		{
 			name: "env ref using dollar-brace syntax - should not find",
@@ -257,7 +255,7 @@ func TestSecretsCheck(t *testing.T) {
 			if tt.wantFind {
 				require.NotEmpty(t, findings, "expected at least one finding")
 				assert.Equal(t, tt.wantRuleID, findings[0].RuleID)
-				assert.Equal(t, "MCP04", findings[0].OWASPMCP)
+				assert.Equal(t, "MCP01", findings[0].OWASPMCP)
 				assert.Equal(t, "critical", findings[0].Severity)
 			} else {
 				assert.Empty(t, findings, "expected no findings")
@@ -365,10 +363,10 @@ func TestToolSpoofingCheck(t *testing.T) {
 				},
 			},
 			wantFind:   true,
-			wantRuleID: "MCP06-001",
+			wantRuleID: "MCP03-201",
 		},
 		{
-			name: "missing integrity hash - should find",
+			name: "missing nonstandard integrity field is not evidence",
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
@@ -377,8 +375,7 @@ func TestToolSpoofingCheck(t *testing.T) {
 					},
 				},
 			},
-			wantFind:   true,
-			wantRuleID: "MCP06-002",
+			wantFind: false,
 		},
 		{
 			name: "unique names with hash - should not find",
@@ -408,7 +405,7 @@ func TestToolSpoofingCheck(t *testing.T) {
 			if tt.wantFind {
 				require.NotEmpty(t, findings, "expected at least one finding")
 				assert.Equal(t, tt.wantRuleID, findings[0].RuleID)
-				assert.Equal(t, "MCP06", findings[0].OWASPMCP)
+				assert.Equal(t, "MCP03", findings[0].OWASPMCP)
 			} else {
 				assert.Empty(t, findings, "expected no findings")
 			}
@@ -420,7 +417,7 @@ func TestToolSpoofingCheck(t *testing.T) {
 // MCP06 - Tool Spoofing Deduplication
 // ---------------------------------------------------------------------------
 
-func TestToolSpoofingDedup(t *testing.T) {
+func TestToolSpoofingDoesNotRequireNonstandardHashes(t *testing.T) {
 	check := &ToolSpoofingCheck{}
 	ctx := CheckContext{
 		ServerName: "test-server",
@@ -433,16 +430,7 @@ func TestToolSpoofingDedup(t *testing.T) {
 		},
 	}
 	findings := check.Run(ctx)
-	// Should produce exactly 1 deduped finding for MCP06-002, not 3
-	hashFindings := 0
-	for _, f := range findings {
-		if f.RuleID == "MCP06-002" {
-			hashFindings++
-			assert.Contains(t, f.Match, "3 tool(s)")
-			assert.Contains(t, f.Description, "3 tool(s)")
-		}
-	}
-	assert.Equal(t, 1, hashFindings, "should produce exactly 1 deduplicated hash finding")
+	assert.Empty(t, findings)
 }
 
 // ---------------------------------------------------------------------------
@@ -465,7 +453,7 @@ func TestSchemaCheckDedup(t *testing.T) {
 	findings := check.Run(ctx)
 	schemaFindings := 0
 	for _, f := range findings {
-		if f.RuleID == "MCP08-001" {
+		if f.RuleID == "MCP03-301" {
 			schemaFindings++
 			assert.Contains(t, f.Match, "4 tool(s)")
 			assert.Contains(t, f.Description, "4 tool(s)")
@@ -564,7 +552,7 @@ func TestSchemaCheck(t *testing.T) {
 				},
 			},
 			wantFind:   true,
-			wantRuleID: "MCP08-001",
+			wantRuleID: "MCP03-301",
 		},
 		{
 			name: "with schema and validation enabled - should not find",
@@ -594,7 +582,7 @@ func TestSchemaCheck(t *testing.T) {
 			if tt.wantFind {
 				require.NotEmpty(t, findings, "expected at least one finding")
 				assert.Equal(t, tt.wantRuleID, findings[0].RuleID)
-				assert.Equal(t, "MCP08", findings[0].OWASPMCP)
+				assert.Equal(t, "MCP03", findings[0].OWASPMCP)
 				assert.Equal(t, "medium", findings[0].Severity)
 			} else {
 				assert.Empty(t, findings, "expected no findings")
@@ -615,7 +603,7 @@ func TestAuditLoggingCheck(t *testing.T) {
 		wantRuleID string
 	}{
 		{
-			name: "no logging config - should find",
+			name: "standard client config cannot assert server logging",
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
@@ -623,8 +611,7 @@ func TestAuditLoggingCheck(t *testing.T) {
 					Logging: nil,
 				},
 			},
-			wantFind:   true,
-			wantRuleID: "MCP09-001",
+			wantFind: false,
 		},
 		{
 			name: "logging enabled with audit - should not find",
@@ -650,7 +637,7 @@ func TestAuditLoggingCheck(t *testing.T) {
 			if tt.wantFind {
 				require.NotEmpty(t, findings, "expected at least one finding")
 				assert.Equal(t, tt.wantRuleID, findings[0].RuleID)
-				assert.Equal(t, "MCP09", findings[0].OWASPMCP)
+				assert.Equal(t, "MCP08", findings[0].OWASPMCP)
 			} else {
 				assert.Empty(t, findings, "expected no findings")
 			}
@@ -670,7 +657,7 @@ func TestResourceExhaustionCheck(t *testing.T) {
 		wantRuleID string
 	}{
 		{
-			name: "no rate limit - should find",
+			name: "standard client config cannot assert server rate limit",
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
@@ -678,8 +665,7 @@ func TestResourceExhaustionCheck(t *testing.T) {
 					RateLimit: nil,
 				},
 			},
-			wantFind:   true,
-			wantRuleID: "MCP10-001",
+			wantFind: false,
 		},
 		{
 			name: "rate limit enabled with max payload - should not find",

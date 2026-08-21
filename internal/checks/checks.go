@@ -30,18 +30,22 @@ type CheckContext struct {
 
 // ServerConfig mirrors the scanner's MCPServer for use in checks.
 type ServerConfig struct {
-	Command     string
-	Args        []string
-	URL         string
-	Transport   string
-	Environment map[string]string
-	Tools       []ToolConfig
-	Auth        *AuthConfig
-	TLS         *TLSConfig
-	Schema      *SchemaConfig
-	Logging     *LoggingConfig
-	RateLimit   *RateLimitConfig
-	Permissions []string
+	Command        string
+	Args           []string
+	URL            string
+	Transport      string
+	Environment    map[string]string
+	Headers        map[string]string
+	CWD            string
+	EnvFile        string
+	SandboxEnabled *bool
+	Tools          []ToolConfig
+	Auth           *AuthConfig
+	TLS            *TLSConfig
+	Schema         *SchemaConfig
+	Logging        *LoggingConfig
+	RateLimit      *RateLimitConfig
+	Permissions    []string
 }
 
 type ToolConfig struct {
@@ -55,9 +59,15 @@ type ToolConfig struct {
 }
 
 type AuthConfig struct {
-	Type   string
-	Token  string
-	APIKey string
+	Type             string
+	Token            string
+	APIKey           string
+	Audience         string
+	Resource         string
+	PKCE             *bool
+	TokenPassthrough bool
+	RedirectURI      string
+	Scopes           []string
 }
 
 type TLSConfig struct {

@@ -5,18 +5,23 @@
 
 # MCPSec Audit
 
-OWASP MCP Top 10 security scanner for Model Context Protocol (MCP) server configurations. Think [Prowler](https://github.com/prowler-cloud/prowler), but purpose-built for MCP.
+Security scanner for Model Context Protocol (MCP) configurations, remote servers, and server source code. Think [Prowler](https://github.com/prowler-cloud/prowler), but purpose-built for MCP and aligned to the [OWASP MCP Top 10:2025 beta](https://owasp.org/www-project-mcp-top-10/).
 
-MCPSec audits MCP server definition files for security risks, outputs findings in OCSF JSON or human-readable tables, and supports a pluggable YAML rules engine for community-contributed detections.
+MCPSec performs evidence-based static config checks, approved-baseline drift detection, multi-client inventory and shadow-server policy checks, read-only remote MCP enumeration, and conservative lexical source analysis. It outputs findings in OCSF JSON or human-readable tables and supports a pluggable YAML rules engine.
+
+MCPSec never executes a configured MCP server during `scan`, `discover`, `baseline`, or `source`. The opt-in `active` command sends only MCP initialization lifecycle messages and paginated tool-inventory requests; it never invokes tools or reads resources.
 
 ---
 
 ## Use Cases
 
-- **Developer laptop audit** -- Scan your Claude Desktop, Cursor, or VS Code MCP configs to find hardcoded API keys, unauthenticated remote servers, and overly broad permissions before they leak
+- **Developer laptop audit** -- Find hardcoded secrets, dangerous startup commands, mutable packages, excessive declared permissions, and broad filesystem exposure
+- **MCP inventory** -- Discover Claude Desktop, Cursor, VS Code, and Windsurf configurations and compare server names with an approved inventory
 - **CI/CD gate** -- Add `mcpsec scan --fail-on high` to your pipeline to block deploys with critical or high-severity MCP misconfigurations
-- **Security team posture assessment** -- Scan all MCP configs across your org, output OCSF JSON to your SIEM, and track risk posture over time
-- **Claude Desktop Extension (DXT) review** -- Audit DXT manifests or your entire Extensions directory for tool spoofing, missing schemas, and integrity violations
+- **Change control** -- Baseline approved server definitions and detect command, argument, environment, endpoint, or tool-definition drift
+- **Remote assessment** -- Enumerate a server's advertised tools without invoking them and inspect descriptions and input schemas
+- **Server code review** -- Locate high-signal command injection, path traversal, SSRF, token-passthrough, and authorization patterns for manual confirmation
+- **Claude Desktop Extension (DXT) review** -- Audit DXT manifests or an Extensions directory for secrets and unsafe tool definitions
 - **Compliance evidence** -- Generate machine-readable OCSF findings as audit artifacts for security reviews
 
 ---
@@ -83,6 +88,20 @@ mcpsec scan --severity critical,high mcp-config.json
 
 # Fail CI if critical findings exist
 mcpsec scan --fail-on critical mcp-config.json
+
+# Approve a config, then detect later drift
+mcpsec baseline create mcp-config.json --output mcpsec-baseline.json
+mcpsec scan --baseline mcpsec-baseline.json mcp-config.json
+
+# Inventory known client configs; optionally flag servers outside an allowlist
+mcpsec discover
+mcpsec discover --approved github,postgres
+
+# Read-only remote enumeration (HTTPS and public addresses by default)
+MCPSEC_ACTIVE_TOKEN='...' mcpsec active https://mcp.example.com/mcp
+
+# Conservative lexical source scan; review results manually
+mcpsec source ./server
 ```
 
 ---
@@ -95,23 +114,22 @@ mcpsec scan --fail-on critical mcp-config.json
 ----------------------------------------------------------------------------------------------------
 RULE ID      NAME                                          SEVERITY   RESOURCE
 ----------------------------------------------------------------------------------------------------
-MCP01-001    Potential prompt injection in tool descrip... HIGH       mcpserver:vulnerable-demo
+MCP03-101    Potential prompt injection in tool descrip... HIGH       mcpserver:vulnerable-demo
 MCP02-002    Excessive tool permissions                    CRITICAL   mcpserver:vulnerable-demo
-MCP03-001    Missing authentication configuration          CRITICAL   mcpserver:vulnerable-demo
-MCP04-001    Plain-text secret in server environment       CRITICAL   mcpserver:vulnerable-demo
-MCP04-002    Plain-text secret in tool environment         CRITICAL   mcpserver:vulnerable-demo
+MCP01-101    Plain-text secret in server environment       CRITICAL   mcpserver:vulnerable-demo
+MCP01-102    Plain-text secret in tool environment         CRITICAL   mcpserver:vulnerable-demo
 MCP05-001    Dangerous URI scheme in tool configuration    HIGH       mcpserver:vulnerable-demo
 MCP05-002    Tool URI targets internal network             HIGH       mcpserver:vulnerable-demo
-MCP06-001    Duplicate tool name detected                  HIGH       mcpserver:vulnerable-demo
-MCP06-002    Missing tool integrity hash                   MEDIUM     mcpserver:vulnerable-demo
+MCP03-201    Duplicate tool name detected                  HIGH       mcpserver:vulnerable-demo
+MCP06-101    Tool attempts to subvert user intent or ap... HIGH       mcpserver:vulnerable-demo
 MCP07-001    Insecure HTTP transport                       HIGH       mcpserver:vulnerable-demo
 MCP07-003    Weak TLS version configured                   HIGH       mcpserver:vulnerable-demo
-MCP08-001    Missing input schema for tool                 MEDIUM     mcpserver:vulnerable-demo
-MCP08-002    Input schema validation not enabled           MEDIUM     mcpserver:vulnerable-demo
-MCP09-001    No logging configuration                      MEDIUM     mcpserver:vulnerable-demo
-MCP10-001    No rate limiting configured                   MEDIUM     mcpserver:vulnerable-demo
+MCP03-301    Missing input schema for tool                 MEDIUM     mcpserver:vulnerable-demo
+MCP04-101    Unpinned package executed as MCP server       HIGH       mcpserver:mutable-local-server
+MCP05-103    Download-and-execute startup chain            CRITICAL   mcpserver:shell-server
+MCP10-101    Broad host context exposed to MCP server      HIGH       mcpserver:mutable-local-server
 ----------------------------------------------------------------------------------------------------
-Total: 15 finding(s)
+Total: 17 finding(s)
 ```
 
 ### OCSF JSON (`--format json`)
@@ -127,7 +145,7 @@ Each finding maps to an OCSF Security Finding (class_uid 2001):
   "severity": "high",
   "time": 1772757930,
   "finding": {
-    "uid": "MCP01-001",
+    "uid": "MCP03-101",
     "title": "Potential prompt injection in tool description",
     "desc": "Tool description contains instruction-like language that could be used to manipulate an LLM consuming tool output.",
     "remediation": {
@@ -157,7 +175,7 @@ MCPSec auto-detects config formats. You can also specify explicitly with `--inpu
 
 | Format | Flag | Description | Example |
 |--------|------|-------------|---------|
-| `mcpServers` JSON | `--input-format mcpservers` | Standard MCP config (Claude Desktop, Cursor) | `claude_desktop_config.json` |
+| Client JSON | `--input-format mcpservers` | `mcpServers` (Claude/Cursor/Windsurf) or `servers` (VS Code) envelope | `claude_desktop_config.json`, `mcp.json` |
 | DXT manifest | `--input-format dxt` | Claude Desktop Extension manifest | `manifest.json` |
 | DXT directory | `--input-format dxtdir` | Directory of DXT extensions | `Claude Extensions/` |
 | Auto (default) | `--input-format auto` | Detects format from file content/structure | Any of the above |
@@ -166,24 +184,22 @@ Inputs must contain at least one MCP server. Duplicate JSON keys, unsupported fo
 
 ---
 
-## OWASP MCP Top 10 Coverage
+## OWASP MCP Top 10:2025 Beta Coverage
 
-All 10 categories are implemented with built-in Go checks and YAML rules:
+| OWASP | Beta risk | Implemented evidence |
+|-------|-----------|----------------------|
+| MCP01 | Token Mismanagement & Secret Exposure | Inline environment, tool, API-key, token, bearer-token, private-key, and credential patterns |
+| MCP02 | Privilege Escalation via Scope Creep | Explicit wildcard, admin, root, filesystem, network, shell, and broad read/write grants |
+| MCP03 | Tool Poisoning | Instruction-like descriptions, duplicate names, missing schemas, schema-validation opt-out, and baseline definition drift |
+| MCP04 | Software Supply Chain Attacks & Dependency Tampering | Unpinned package runners, mutable container tags, unpinned Git references, and approved baselines |
+| MCP05 | Command Injection & Execution | Shell launchers, privileged/destructive commands, download-and-execute chains, encoded payloads, sensitive paths, unsafe URIs, plus source patterns |
+| MCP06 | Intent Flow Subversion | Tool metadata that suppresses confirmation, forces invocation, or attempts to bypass approval |
+| MCP07 | Insufficient Authentication & Authorization | Explicitly incomplete auth, OAuth token passthrough, resource/audience binding, PKCE and redirect settings, insecure transport/TLS, unauthenticated active enumeration, and source token-passthrough patterns |
+| MCP08 | Lack of Audit and Telemetry | Explicitly disabled logging/audit settings and remote inventory failures |
+| MCP09 | Shadow MCP Servers | Multi-client discovery plus an explicit `--approved` server-name policy |
+| MCP10 | Context Injection & Over-Sharing | Broad home, system, filesystem-root, mount, and read-scope arguments |
 
-| OWASP | Risk | Rule IDs | Severity | Description |
-|-------|------|----------|----------|-------------|
-| MCP01 | Prompt Injection via Tool Output | MCP01-001 | High | Detects instruction-like patterns in tool descriptions |
-| MCP02 | Excessive Tool Permissions | MCP02-001..003 | Critical/High | Flags wildcard perms, overprivileged tools, missing boundaries |
-| MCP03 | Missing Authentication | MCP03-001..002 | Critical/High | Detects missing or incomplete auth configuration |
-| MCP04 | Sensitive Data Exposure | MCP04-001..004 | Critical | Finds hardcoded API keys, tokens, passwords in env vars |
-| MCP05 | Unsafe Resource Access | MCP05-001..002 | High | Detects SSRF-prone URIs (file://, internal IPs, metadata endpoints) |
-| MCP06 | Tool Definition Spoofing | MCP06-001..002 | High/Medium | Flags duplicate tool names, missing integrity hashes |
-| MCP07 | Insecure Transport | MCP07-001..003 | Critical/High | Detects HTTP URLs, disabled TLS, weak TLS versions |
-| MCP08 | Unvalidated Tool Input Schemas | MCP08-001..002 | Medium | Flags tools without input schemas, disabled validation |
-| MCP09 | Logging and Audit Deficiencies | MCP09-001..003 | Medium/High | Detects missing or disabled logging and audit trails |
-| MCP10 | Denial of Service | MCP10-001..002 | Medium | Flags missing rate limiting and payload size limits |
-
-Authentication, audit-logging, and rate-limit checks apply to network transports. Command-only and `stdio` servers are local child processes and are not reported as unauthenticated network services.
+The scanner reports what its input can establish. Standard client configuration does not prove whether a remote implementation has server-side authorization, audit logging, rate limits, sandboxing, or secure business logic. MCPSec therefore does not report those controls as missing solely because nonstandard config fields are absent. Use `active`, `source`, and deployment-specific review to increase assurance.
 
 ---
 
@@ -201,12 +217,31 @@ Flags:
       --severity string       Filter by severity (comma-separated: critical,high,medium,low,info)
       --input-format string   Input format: auto, mcpservers, dxt, dxtdir (default "auto")
       --summary-output string Write a JSON scan summary to this file
+      --baseline string       Compare with an approved baseline
       --fail-on string        Exit with code 1 if findings at or above this severity
       --splunk-url string     Splunk HEC endpoint URL
       --splunk-token string   Splunk HEC token (also reads MCPSEC_SPLUNK_TOKEN env var)
       --splunk-index string   Splunk index name
   -q, --quiet                 Suppress output except findings
 ```
+
+### `mcpsec baseline create [config-file] --output [file]`
+
+Writes SHA-256 fingerprints of normalized server definitions. Later, `scan --baseline` reports added, removed, or modified servers. Baselines can contain hashes of secret-bearing definitions, but not the secret values themselves.
+
+### `mcpsec discover [path...]`
+
+Inventories MCP configs. With no paths, checks established per-user Claude Desktop, Cursor, VS Code, and Windsurf locations. Directory arguments are searched while `.git` and `node_modules` are skipped.
+
+Use `--approved name1,name2` to report every other discovered server as OWASP MCP09 shadow MCP. Approval is an explicit policy; discovery alone does not assume that an installed server is unauthorized.
+
+### `mcpsec active [MCP-URL]`
+
+Sends `initialize`, `notifications/initialized`, and paginated `tools/list`, then applies tool-definition checks. It does not call tools, read resources, render prompts, request model sampling, or accept elicitation. HTTPS and public addresses are required by default; `--allow-private` explicitly permits private/local and HTTP development endpoints. Set a bearer token in `MCPSEC_ACTIVE_TOKEN`, or name another variable with `--token-env`; tokens are never accepted as command-line values.
+
+### `mcpsec source [directory]`
+
+Performs lexical checks over Go, Python, JavaScript, TypeScript, Java, and Rust source without building or running it. Source findings identify review candidates, not proven exploitability.
 
 ### `mcpsec rules list`
 
@@ -335,6 +370,9 @@ jobs:
     # Save findings to a file
     output: findings.json
 
+    # Compare with a committed approved baseline
+    baseline: mcpsec-baseline.json
+
     # MCPSec version to install (default: latest)
     version: latest
 ```
@@ -384,10 +422,10 @@ jobs:
 MCPSec includes a pluggable YAML rules engine for community-contributed detections. Rules are Sigma-style YAML files:
 
 ```yaml
-id: MCP04-001
+id: MCP01-CUSTOM-001
 name: Plain-text API key in tool environment
 severity: critical
-owasp_mcp: MCP04
+owasp_mcp: MCP01
 description: |
   Tool definition includes a plain-text API key or secret in the environment
   variables block, exposing credentials to any process reading the config.
@@ -433,18 +471,22 @@ The Splunk app is in `splunk/app/` with dashboards in `splunk/dashboards/`. See 
 
 ## Architecture
 
-MCPSec uses a dual-layer detection engine:
+MCPSec uses several evidence sources that feed one finding pipeline:
 
-1. **Go checks** (`internal/checks/`) -- Compiled, type-safe checks that understand MCP server config structure. These perform semantic analysis (duplicate tool names, TLS version validation, credential pattern matching).
+1. **Go checks** (`internal/checks/`) -- Compiled checks that understand parsed MCP configuration structure.
 
 2. **YAML rules** (`rules/`) -- Optional regex/JSONPath rules loaded with `--rules`. Rules execute against one parsed server at a time, preventing matches from being attributed to unrelated servers.
 
-Both layers feed into the same Finding -> OCSF output pipeline.
+3. **Baseline and discovery** -- Normalized definition fingerprints and explicit approved-name policy.
+
+4. **Active and source scans** -- Read-only protocol inventory and lexical source review. These are separate, opt-in commands.
+
+All scan modes produce the same finding model; `scan` supports table, OCSF JSON, and Splunk output. The newer specialized commands currently emit table or inventory JSON as documented above.
 
 ```
                      +------------------+
-  Config file ------>|  Format Detector |
-  (mcpServers/DXT)   +--------+---------+
+  Config/DXT ------->|  Format Detector |
+  Active/source ---->+--------+---------+
                               |
                      +--------v---------+
                      |  Scanner Engine   |
@@ -453,7 +495,7 @@ Both layers feed into the same Finding -> OCSF output pipeline.
               +---------------+---------------+
               |                               |
      +--------v---------+           +--------v---------+
-     |  Go Checks (10)  |           |  YAML Rule Engine |
+     | Built-in Checks  |           |  YAML Rule Engine |
      |  internal/checks/ |           |  rules/*.yaml     |
      +--------+---------+           +--------+---------+
               |                               |

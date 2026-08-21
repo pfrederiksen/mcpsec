@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +36,7 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "mcpsec",
 		Short: "MCPSec Audit - OWASP MCP Top 10 security scanner",
-		Long:  "Security scanner that audits Model Context Protocol (MCP) server configurations against the OWASP MCP Top 10.",
+		Long:  "Security scanner for Model Context Protocol configurations, remote tool inventories, and server source code, aligned to the OWASP MCP Top 10:2025 beta.",
 	}
 
 	// scan command
@@ -51,6 +52,7 @@ func main() {
 		quiet         bool
 		inputFormat   string
 		summaryOutput string
+		baselinePath  string
 	)
 
 	scanCmd := &cobra.Command{
@@ -77,6 +79,7 @@ func main() {
 				}
 			}
 			s := scanner.New()
+			s.BaselinePath = baselinePath
 
 			if rulesDir != "" {
 				cleanDir := filepath.Clean(rulesDir)
@@ -216,6 +219,69 @@ func main() {
 	scanCmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress output except findings")
 	scanCmd.Flags().StringVar(&inputFormat, "input-format", "auto", "Input format: auto, mcpservers, dxt, dxtdir")
 	scanCmd.Flags().StringVar(&summaryOutput, "summary-output", "", "Write a JSON scan summary to this file")
+	scanCmd.Flags().StringVar(&baselinePath, "baseline", "", "Compare configuration with an approved baseline")
+
+	baselineCmd := &cobra.Command{Use: "baseline", Short: "Create approved configuration fingerprints"}
+	var baselineOutput string
+	baselineCreateCmd := &cobra.Command{
+		Use: "create [config-file]", Short: "Create a drift-detection baseline", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if baselineOutput == "" {
+				return fmt.Errorf("--output is required")
+			}
+			return scanner.New().CreateBaseline(args[0], baselineOutput)
+		},
+	}
+	baselineCreateCmd.Flags().StringVarP(&baselineOutput, "output", "o", "", "Baseline output file")
+	baselineCmd.AddCommand(baselineCreateCmd)
+
+	var approvedServers string
+	discoverCmd := &cobra.Command{
+		Use: "discover [path...]", Short: "Inventory MCP servers across client configurations", Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			found, err := scanner.New().Discover(args)
+			if err != nil {
+				return err
+			}
+			if approvedServers != "" {
+				return output.WriteTable(os.Stdout, findingInputs(scanner.ShadowFindings(found, strings.Split(approvedServers, ","))))
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(found)
+		},
+	}
+	discoverCmd.Flags().StringVar(&approvedServers, "approved", "", "Comma-separated approved server names; flag all others as shadow MCP")
+
+	var activeAllowPrivate bool
+	var activeTokenEnv string
+	activeCmd := &cobra.Command{
+		Use: "active [MCP-URL]", Short: "Safely enumerate and scan a remote MCP server", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s := scanner.New()
+			if activeTokenEnv != "" {
+				s.ActiveToken = os.Getenv(activeTokenEnv)
+			}
+			result, err := s.ActiveScan(context.Background(), args[0], activeAllowPrivate)
+			if err != nil {
+				return err
+			}
+			return output.WriteTable(os.Stdout, findingInputs(result.Findings))
+		},
+	}
+	activeCmd.Flags().BoolVar(&activeAllowPrivate, "allow-private", false, "Allow explicitly authorized private/local and HTTP endpoints")
+	activeCmd.Flags().StringVar(&activeTokenEnv, "token-env", "MCPSEC_ACTIVE_TOKEN", "Environment variable containing a bearer token")
+
+	sourceCmd := &cobra.Command{
+		Use: "source [directory]", Short: "Scan MCP server source code without executing it", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := scanner.New().ScanSource(args[0])
+			if err != nil {
+				return err
+			}
+			return output.WriteTable(os.Stdout, findingInputs(result.Findings))
+		},
+	}
 
 	// rules command
 	rulesCmd := &cobra.Command{
@@ -282,10 +348,18 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(scanCmd, rulesCmd, versionCmd)
+	rootCmd.AddCommand(scanCmd, baselineCmd, discoverCmd, activeCmd, sourceCmd, rulesCmd, versionCmd)
 
 	rootCmd.SilenceUsage = true
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func findingInputs(findings []scanner.Finding) []output.FindingInput {
+	result := make([]output.FindingInput, len(findings))
+	for i, f := range findings {
+		result[i] = output.FindingInput{RuleID: f.RuleID, Name: f.Name, Severity: f.Severity, Description: f.Description, Remediation: f.Remediation, Resource: f.Resource}
+	}
+	return result
 }

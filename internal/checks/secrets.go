@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// SecretsCheck detects MCP04 — Sensitive Data Exposure.
+// SecretsCheck detects OWASP MCP01 — Token Mismanagement & Secret Exposure.
 type SecretsCheck struct{}
 
 var secretPatterns = []*regexp.Regexp{
@@ -23,14 +23,25 @@ var secretPatterns = []*regexp.Regexp{
 func (c *SecretsCheck) Run(ctx CheckContext) []CheckFinding {
 	var findings []CheckFinding
 
+	for key, val := range ctx.Server.Headers {
+		if containsSecret(key, val) {
+			findings = append(findings, CheckFinding{
+				RuleID: "MCP01-105", Name: "Plain-text secret in remote request header", Severity: "critical", OWASPMCP: "MCP01",
+				Description: "A remote MCP request header contains an inline credential.",
+				Remediation: "Use a client-supported secure input or environment reference instead of committing the credential.", Match: "header=" + key,
+			})
+			break
+		}
+	}
+
 	// Check server-level environment variables
 	for key, val := range ctx.Server.Environment {
 		if containsSecret(key, val) {
 			findings = append(findings, CheckFinding{
-				RuleID:      "MCP04-001",
+				RuleID:      "MCP01-101",
 				Name:        "Plain-text secret in server environment",
 				Severity:    "critical",
-				OWASPMCP:    "MCP04",
+				OWASPMCP:    "MCP01",
 				Description: "Server environment variable contains a plain-text secret or API key, exposing credentials to any process reading the config.",
 				Remediation: "Move secrets to a secrets manager (AWS Secrets Manager, HashiCorp Vault) and inject at runtime via environment variable references, not literals.",
 				Match:       fmt.Sprintf("env=%s", key),
@@ -44,10 +55,10 @@ func (c *SecretsCheck) Run(ctx CheckContext) []CheckFinding {
 		for key, val := range tool.Environment {
 			if containsSecret(key, val) {
 				findings = append(findings, CheckFinding{
-					RuleID:      "MCP04-002",
+					RuleID:      "MCP01-102",
 					Name:        "Plain-text secret in tool environment",
 					Severity:    "critical",
-					OWASPMCP:    "MCP04",
+					OWASPMCP:    "MCP01",
 					Description: "Tool environment variable contains a plain-text secret or API key.",
 					Remediation: "Move secrets to a secrets manager and inject at runtime via environment variable references, not literals.",
 					Match:       fmt.Sprintf("tool=%s env=%s", tool.Name, key),
@@ -60,10 +71,10 @@ func (c *SecretsCheck) Run(ctx CheckContext) []CheckFinding {
 	if ctx.Server.Auth != nil {
 		if ctx.Server.Auth.Token != "" && !isSecretReference(ctx.Server.Auth.Token) {
 			findings = append(findings, CheckFinding{
-				RuleID:      "MCP04-003",
+				RuleID:      "MCP01-103",
 				Name:        "Inline auth token in configuration",
 				Severity:    "critical",
-				OWASPMCP:    "MCP04",
+				OWASPMCP:    "MCP01",
 				Description: "Authentication token is stored inline in the configuration file.",
 				Remediation: "Reference the token via an environment variable (e.g., ${AUTH_TOKEN}) rather than embedding it in the config.",
 				Match:       "auth.token",
@@ -71,10 +82,10 @@ func (c *SecretsCheck) Run(ctx CheckContext) []CheckFinding {
 		}
 		if ctx.Server.Auth.APIKey != "" && !isSecretReference(ctx.Server.Auth.APIKey) {
 			findings = append(findings, CheckFinding{
-				RuleID:      "MCP04-004",
+				RuleID:      "MCP01-104",
 				Name:        "Inline API key in configuration",
 				Severity:    "critical",
-				OWASPMCP:    "MCP04",
+				OWASPMCP:    "MCP01",
 				Description: "API key is stored inline in the configuration file.",
 				Remediation: "Reference the API key via an environment variable rather than embedding it in the config.",
 				Match:       "auth.apiKey",

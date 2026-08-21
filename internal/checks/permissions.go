@@ -4,25 +4,28 @@ package checks
 type PermissionsCheck struct{}
 
 var dangerousPermissions = map[string]bool{
-	"*":               true,
-	"admin":           true,
-	"root":            true,
-	"sudo":            true,
-	"write:*":         true,
-	"read:*":          true,
-	"execute:*":       true,
-	"full_access":     true,
-	"all":             true,
-	"filesystem:*":    true,
-	"network:*":       true,
-	"shell:*":         true,
-	"exec":            true,
-	"shell":           true,
-	"filesystem":      true,
+	"*":            true,
+	"admin":        true,
+	"root":         true,
+	"sudo":         true,
+	"write:*":      true,
+	"read:*":       true,
+	"execute:*":    true,
+	"full_access":  true,
+	"all":          true,
+	"filesystem:*": true,
+	"network:*":    true,
+	"shell:*":      true,
+	"exec":         true,
+	"shell":        true,
+	"filesystem":   true,
 }
 
 func (c *PermissionsCheck) Run(ctx CheckContext) []CheckFinding {
 	var findings []CheckFinding
+	if ctx.Server.Command != "" && ctx.Server.SandboxEnabled != nil && !*ctx.Server.SandboxEnabled {
+		findings = append(findings, CheckFinding{RuleID: "MCP02-101", Name: "Local server sandbox explicitly disabled", Severity: "high", OWASPMCP: "MCP02", Description: "The client configuration explicitly disables its MCP process sandbox.", Remediation: "Enable the client sandbox and grant only required filesystem and network access.", Match: "sandboxEnabled=false"})
+	}
 
 	// Check server-level permissions
 	for _, perm := range ctx.Server.Permissions {
@@ -55,27 +58,6 @@ func (c *PermissionsCheck) Run(ctx CheckContext) []CheckFinding {
 				})
 				break
 			}
-		}
-	}
-
-	// Flag if no permissions defined at all (implicit full access)
-	if len(ctx.Server.Permissions) == 0 {
-		hasToolPerms := false
-		for _, t := range ctx.Server.Tools {
-			if len(t.Permissions) > 0 {
-				hasToolPerms = true
-				break
-			}
-		}
-		if !hasToolPerms && len(ctx.Server.Tools) > 0 {
-			findings = append(findings, CheckFinding{
-				RuleID:      "MCP02-003",
-				Name:        "No permission boundaries defined",
-				Severity:    "high",
-				OWASPMCP:    "MCP02",
-				Description: "Neither server-level nor tool-level permissions are defined, implying unrestricted access.",
-				Remediation: "Define explicit permission boundaries at the server and/or tool level following the principle of least privilege.",
-			})
 		}
 	}
 

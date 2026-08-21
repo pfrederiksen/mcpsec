@@ -33,7 +33,7 @@ MCPSec uses OCSF **Security Finding** (class_uid: `2001`).
 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
-| `finding.uid` | string | Rule identifier | `"MCP04-001"` |
+| `finding.uid` | string | Rule identifier | `"MCP01-101"` |
 | `finding.title` | string | Finding title | `"Plain-text secret in server environment"` |
 | `finding.desc` | string | Detailed description | `"Server environment variable contains..."` |
 | `finding.remediation.desc` | string | Remediation guidance | `"Move secrets to a secrets manager..."` |
@@ -63,7 +63,7 @@ MCPSec uses OCSF **Security Finding** (class_uid: `2001`).
   "severity": "critical",
   "time": 1772757930,
   "finding": {
-    "uid": "MCP04-001",
+    "uid": "MCP01-101",
     "title": "Plain-text secret in server environment",
     "desc": "Server environment variable contains a plain-text secret or API key, exposing credentials to any process reading the config.",
     "remediation": {

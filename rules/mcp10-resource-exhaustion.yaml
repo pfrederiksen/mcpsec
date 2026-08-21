@@ -1,25 +1,16 @@
 id: MCP10-R01
-name: Missing Rate Limiting Configuration
-severity: medium
+name: Broad Host Context Exposure
+severity: high
 owasp_mcp: MCP10
-scope: remote
 description: |
-  Detects MCP server configurations that lack rate limiting controls.
-  Without rate limits, servers are vulnerable to denial-of-service attacks,
-  resource exhaustion, and runaway tool invocations that can overwhelm
-  backend systems.
+  Detects startup arguments that expose broad home or filesystem-root context
+  to a local MCP server.
 references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
-  path: "$.mcpServers.*"
-  pattern: "\"rateLimit\"\\s*:"
-  type: not_regex
+  path: "$.mcpServers.*.args"
+  pattern: "--root|--allow-read|--filesystem|/home|/Users|/:/"
+  type: regex
 remediation: |
-  Add rate limiting configuration to every MCP server. Example:
-    "rateLimit": {
-      "enabled": true,
-      "maxRequestsPerSecond": 100,
-      "maxPayloadBytes": 1048576
-    }
-  Set appropriate limits based on expected usage patterns. Implement
-  backpressure mechanisms and graceful degradation for when limits are hit.
+  Restrict the server to task-specific directories and prefer read-only
+  mounts. Do not expose a user's entire home directory or filesystem root.

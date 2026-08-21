@@ -10,7 +10,7 @@ references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
   path: "$.mcpServers.*.url"
-  pattern: "^http://[^s]"
+  pattern: "^http://"
   type: regex
 remediation: |
   Always use HTTPS for MCP server transport. Configure TLS 1.2 or higher

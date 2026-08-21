@@ -2,7 +2,7 @@ package checks
 
 import "strings"
 
-// PromptInjectionCheck detects MCP01 — Prompt Injection via Tool Output.
+// PromptInjectionCheck detects OWASP MCP03 — Tool Poisoning.
 // Flags tools whose descriptions contain instruction-like patterns that could
 // manipulate an LLM consuming tool output.
 type PromptInjectionCheck struct{}
@@ -27,10 +27,10 @@ func (c *PromptInjectionCheck) Run(ctx CheckContext) []CheckFinding {
 		for _, pattern := range promptInjectionPatterns {
 			if strings.Contains(desc, pattern) {
 				findings = append(findings, CheckFinding{
-					RuleID:      "MCP01-001",
+					RuleID:      "MCP03-101",
 					Name:        "Potential prompt injection in tool description",
 					Severity:    "high",
-					OWASPMCP:    "MCP01",
+					OWASPMCP:    "MCP03",
 					Description: "Tool description contains instruction-like language that could be used to manipulate an LLM consuming tool output.",
 					Remediation: "Sanitize tool descriptions to remove instruction-like language. Use structured output formats rather than free-text descriptions that could be interpreted as instructions.",
 					Match:       "tool=" + tool.Name + " pattern=" + pattern,

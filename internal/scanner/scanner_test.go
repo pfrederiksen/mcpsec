@@ -19,6 +19,28 @@ func TestRejectsUnsupportedOrEmptyConfig(t *testing.T) {
 	}
 }
 
+func TestScansVSCodeServersFormatAndFlexibleEnv(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	content := `{"servers":{"example":{"type":"stdio","command":"npx","args":["example@1.2.3"],"env":{"PORT":3000,"OPTIONAL":null}}}}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	result, err := New().ScanFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "mcp.json", result.Target)
+}
+
+func TestScansInlineVSCodeRemoteHeaders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	content := `{"servers":{"remote":{"type":"http","url":"https://example.com/mcp","headers":{"Authorization":"Bearer test-secret-token-value-123456789"}}}}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	result, err := New().ScanFile(path)
+	require.NoError(t, err)
+	ids := make([]string, len(result.Findings))
+	for i, finding := range result.Findings {
+		ids[i] = finding.RuleID
+	}
+	assert.Contains(t, ids, "MCP01-105")
+}
+
 func TestRejectsDuplicateJSONKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	content := `{"mcpServers":{"server":{"url":"https://safe.example","url":"http://unsafe.example"}}}`
@@ -59,16 +81,15 @@ func TestScanVulnerableServer(t *testing.T) {
 	}
 
 	expectedCategories := []string{
-		"MCP01", // Prompt Injection
+		"MCP01", // Token Mismanagement & Secret Exposure
 		"MCP02", // Excessive Permissions
-		"MCP03", // Missing Auth
-		"MCP04", // Secrets Exposure
-		"MCP05", // Unsafe Resources
-		"MCP06", // Tool Spoofing
-		"MCP07", // Insecure Transport
-		"MCP08", // Unvalidated Schemas
-		"MCP09", // Audit Logging
-		"MCP10", // Resource Exhaustion
+		"MCP03", // Tool Poisoning
+		"MCP04", // Supply Chain
+		"MCP05", // Command Injection / Unsafe Execution
+		"MCP06", // Intent Flow Subversion
+		"MCP07", // Authentication / Transport
+		"MCP08", // Audit and Telemetry
+		"MCP10", // Context Over-Sharing
 	}
 
 	for _, cat := range expectedCategories {
@@ -100,8 +121,8 @@ func TestScanDXTManifest(t *testing.T) {
 	for _, f := range result.Findings {
 		owaspCategories[f.OWASPMCP] = true
 	}
-	assert.False(t, owaspCategories["MCP03"], "local command-based DXT servers do not require network auth")
-	assert.True(t, owaspCategories["MCP04"], "should detect secrets in env")
+	assert.True(t, owaspCategories["MCP03"], "should detect unsafe tool definitions")
+	assert.True(t, owaspCategories["MCP01"], "should detect secrets in env")
 
 	// Verify the resource name uses the display_name from DXT
 	for _, f := range result.Findings {

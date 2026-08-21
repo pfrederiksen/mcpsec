@@ -1,7 +1,7 @@
-id: MCP08-R01
+id: MCP03-R02
 name: Missing Input Schema Validation
 severity: medium
-owasp_mcp: MCP08
+owasp_mcp: MCP03
 description: |
   Detects tools that lack an inputSchema definition. Without input schema
   validation, tools accept arbitrary input which may lead to injection

@@ -45,6 +45,7 @@ const maxConfigSize = 10 << 20
 // MCPServerConfig represents a parsed MCP server configuration file.
 type MCPServerConfig struct {
 	MCPServers map[string]MCPServer `json:"mcpServers"`
+	Servers    map[string]MCPServer `json:"servers,omitempty"`
 }
 
 // DXTManifest represents a Claude Desktop Extension manifest.json.
@@ -66,36 +67,70 @@ type DXTServer struct {
 
 // MCPServer represents a single MCP server definition.
 type MCPServer struct {
-	Command     string            `json:"command"`
-	Args        []string          `json:"args"`
-	URL         string            `json:"url,omitempty"`
-	Transport   string            `json:"transport,omitempty"`
-	Environment map[string]string `json:"env,omitempty"`
-	Tools       []Tool            `json:"tools,omitempty"`
-	Auth        *AuthConfig       `json:"auth,omitempty"`
-	TLS         *TLSConfig        `json:"tls,omitempty"`
-	Schema      *SchemaConfig     `json:"schema,omitempty"`
-	Logging     *LoggingConfig    `json:"logging,omitempty"`
-	RateLimit   *RateLimitConfig  `json:"rateLimit,omitempty"`
-	Permissions []string          `json:"permissions,omitempty"`
+	Command        string           `json:"command"`
+	Args           []string         `json:"args"`
+	URL            string           `json:"url,omitempty"`
+	Transport      string           `json:"transport,omitempty"`
+	Environment    StringMap        `json:"env,omitempty"`
+	Headers        StringMap        `json:"headers,omitempty"`
+	CWD            string           `json:"cwd,omitempty"`
+	EnvFile        string           `json:"envFile,omitempty"`
+	SandboxEnabled *bool            `json:"sandboxEnabled,omitempty"`
+	Tools          []Tool           `json:"tools,omitempty"`
+	Auth           *AuthConfig      `json:"auth,omitempty"`
+	TLS            *TLSConfig       `json:"tls,omitempty"`
+	Schema         *SchemaConfig    `json:"schema,omitempty"`
+	Logging        *LoggingConfig   `json:"logging,omitempty"`
+	RateLimit      *RateLimitConfig `json:"rateLimit,omitempty"`
+	Permissions    []string         `json:"permissions,omitempty"`
 }
 
 // Tool represents a tool definition within an MCP server.
 type Tool struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	InputSchema json.RawMessage   `json:"inputSchema,omitempty"`
-	Environment map[string]string `json:"env,omitempty"`
-	URI         string            `json:"uri,omitempty"`
-	Permissions []string          `json:"permissions,omitempty"`
-	Hash        string            `json:"hash,omitempty"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
+	Environment StringMap       `json:"env,omitempty"`
+	URI         string          `json:"uri,omitempty"`
+	Permissions []string        `json:"permissions,omitempty"`
+	Hash        string          `json:"hash,omitempty"`
+}
+
+// StringMap accepts the string, numeric, boolean, and null environment values
+// permitted by clients such as VS Code while presenting checks with strings.
+type StringMap map[string]string
+
+func (m *StringMap) UnmarshalJSON(data []byte) error {
+	var values map[string]any
+	if err := json.Unmarshal(data, &values); err != nil {
+		return err
+	}
+	result := make(StringMap, len(values))
+	for key, value := range values {
+		switch typed := value.(type) {
+		case string:
+			result[key] = typed
+		case nil:
+			result[key] = ""
+		default:
+			result[key] = fmt.Sprint(typed)
+		}
+	}
+	*m = result
+	return nil
 }
 
 // AuthConfig holds authentication configuration for an MCP server.
 type AuthConfig struct {
-	Type   string `json:"type,omitempty"`
-	Token  string `json:"token,omitempty"`
-	APIKey string `json:"apiKey,omitempty"`
+	Type             string   `json:"type,omitempty"`
+	Token            string   `json:"token,omitempty"`
+	APIKey           string   `json:"apiKey,omitempty"`
+	Audience         string   `json:"audience,omitempty"`
+	Resource         string   `json:"resource,omitempty"`
+	PKCE             *bool    `json:"pkce,omitempty"`
+	TokenPassthrough bool     `json:"tokenPassthrough,omitempty"`
+	RedirectURI      string   `json:"redirectUri,omitempty"`
+	Scopes           []string `json:"scopes,omitempty"`
 }
 
 // TLSConfig holds TLS configuration for an MCP server.
@@ -128,10 +163,12 @@ type RateLimitConfig struct {
 
 // Scanner orchestrates security checks against MCP server configurations.
 type Scanner struct {
-	RuleEngine  *rules.Engine
-	Checks      []checks.Check
-	Severity    []string
-	InputFormat InputFormat
+	RuleEngine   *rules.Engine
+	Checks       []checks.Check
+	Severity     []string
+	InputFormat  InputFormat
+	BaselinePath string
+	ActiveToken  string
 }
 
 // New creates a Scanner with all built-in checks registered.
@@ -140,6 +177,10 @@ func New() *Scanner {
 		RuleEngine: rules.NewEngine(),
 		Checks: []checks.Check{
 			&checks.PromptInjectionCheck{},
+			&checks.IntentFlowCheck{},
+			&checks.StartupCommandCheck{},
+			&checks.SupplyChainCheck{},
+			&checks.ContextExposureCheck{},
 			&checks.PermissionsCheck{},
 			&checks.AuthCheck{},
 			&checks.SecretsCheck{},
@@ -148,7 +189,6 @@ func New() *Scanner {
 			&checks.TransportCheck{},
 			&checks.SchemaCheck{},
 			&checks.AuditLoggingCheck{},
-			&checks.ResourceExhaustionCheck{},
 		},
 	}
 }
@@ -197,7 +237,22 @@ func (s *Scanner) ScanFile(path string) (*ScanResult, error) {
 		return nil, err
 	}
 
-	return s.scanConfig(config, data, filepath.Base(path))
+	result, err := s.scanConfig(config, data, filepath.Base(path))
+	if err != nil {
+		return nil, err
+	}
+	if s.BaselinePath != "" {
+		drift, compareErr := compareBaseline(config, s.BaselinePath)
+		if compareErr != nil {
+			return nil, compareErr
+		}
+		for _, finding := range drift {
+			if s.severityAllowed(finding.Severity) {
+				result.Findings = append(result.Findings, finding)
+			}
+		}
+	}
+	return result, nil
 }
 
 func rejectDuplicateJSONKeys(data []byte) error {
@@ -266,6 +321,7 @@ func (s *Scanner) parseConfig(data []byte, path string, format InputFormat) (*MC
 		if err := json.Unmarshal(data, &config); err != nil {
 			return nil, fmt.Errorf("parsing config file: %w", err)
 		}
+		config.normalizeServers()
 		if len(config.MCPServers) == 0 {
 			return nil, fmt.Errorf("parsing config file: no MCP servers found")
 		}
@@ -281,6 +337,10 @@ func (s *Scanner) parseConfig(data []byte, path string, format InputFormat) (*MC
 	if len(config.MCPServers) > 0 {
 		return &config, nil
 	}
+	if len(config.Servers) > 0 {
+		config.normalizeServers()
+		return &config, nil
+	}
 
 	// Check if it looks like a DXT manifest
 	var probe struct {
@@ -292,6 +352,12 @@ func (s *Scanner) parseConfig(data []byte, path string, format InputFormat) (*MC
 	}
 
 	return nil, fmt.Errorf("unsupported config format: expected a non-empty mcpServers object or DXT manifest")
+}
+
+func (c *MCPServerConfig) normalizeServers() {
+	if len(c.MCPServers) == 0 && len(c.Servers) > 0 {
+		c.MCPServers = c.Servers
+	}
 }
 
 // parseDXTManifest converts a DXT manifest.json into MCPServerConfig.
@@ -447,15 +513,19 @@ func (s *Scanner) severityAllowed(sev string) bool {
 
 func toCheckServer(s MCPServer) checks.ServerConfig {
 	cs := checks.ServerConfig{
-		Command:     s.Command,
-		Args:        s.Args,
-		URL:         s.URL,
-		Transport:   s.Transport,
-		Environment: s.Environment,
-		Permissions: s.Permissions,
+		Command:        s.Command,
+		Args:           s.Args,
+		URL:            s.URL,
+		Transport:      s.Transport,
+		Environment:    map[string]string(s.Environment),
+		Headers:        map[string]string(s.Headers),
+		CWD:            s.CWD,
+		EnvFile:        s.EnvFile,
+		SandboxEnabled: s.SandboxEnabled,
+		Permissions:    s.Permissions,
 	}
 	if s.Auth != nil {
-		cs.Auth = &checks.AuthConfig{Type: s.Auth.Type, Token: s.Auth.Token, APIKey: s.Auth.APIKey}
+		cs.Auth = &checks.AuthConfig{Type: s.Auth.Type, Token: s.Auth.Token, APIKey: s.Auth.APIKey, Audience: s.Auth.Audience, Resource: s.Auth.Resource, PKCE: s.Auth.PKCE, TokenPassthrough: s.Auth.TokenPassthrough, RedirectURI: s.Auth.RedirectURI, Scopes: s.Auth.Scopes}
 	}
 	if s.TLS != nil {
 		cs.TLS = &checks.TLSConfig{Enabled: s.TLS.Enabled, CertFile: s.TLS.CertFile, KeyFile: s.TLS.KeyFile, MinVer: s.TLS.MinVer}
@@ -474,7 +544,7 @@ func toCheckServer(s MCPServer) checks.ServerConfig {
 			Name:        t.Name,
 			Description: t.Description,
 			InputSchema: t.InputSchema,
-			Environment: t.Environment,
+			Environment: map[string]string(t.Environment),
 			URI:         t.URI,
 			Permissions: t.Permissions,
 			Hash:        t.Hash,

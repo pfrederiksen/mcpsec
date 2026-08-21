@@ -1,6 +1,7 @@
 package checks
 
-// ResourceExhaustionCheck detects MCP10 — Denial of Service via Resource Exhaustion.
+// ResourceExhaustionCheck is a supplemental legacy control outside the OWASP
+// MCP Top 10:2025 beta taxonomy. It is not registered by the default scanner.
 type ResourceExhaustionCheck struct{}
 
 func (c *ResourceExhaustionCheck) Run(ctx CheckContext) []CheckFinding {
@@ -9,7 +10,7 @@ func (c *ResourceExhaustionCheck) Run(ctx CheckContext) []CheckFinding {
 		return findings
 	}
 
-	if ctx.Server.RateLimit == nil || !ctx.Server.RateLimit.Enabled {
+	if ctx.Server.RateLimit != nil && !ctx.Server.RateLimit.Enabled {
 		findings = append(findings, CheckFinding{
 			RuleID:      "MCP10-001",
 			Name:        "No rate limiting configured",
