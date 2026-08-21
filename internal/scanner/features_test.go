@@ -57,10 +57,12 @@ func TestActiveScanOnlyEnumeratesTools(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if request.Method == "initialize" {
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"test","version":"1"}}}`))
+			_, writeErr := w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"test","version":"1"}}}`))
+			assert.NoError(t, writeErr)
 			return
 		}
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"safe","description":"Read a record","inputSchema":{"type":"object"}}]}}`))
+		_, writeErr := w.Write([]byte(`{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"safe","description":"Read a record","inputSchema":{"type":"object"}}]}}`))
+		assert.NoError(t, writeErr)
 	}))
 	defer server.Close()
 	result, err := New().ActiveScan(context.Background(), server.URL, true)

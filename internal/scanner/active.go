@@ -37,7 +37,11 @@ func (s *Scanner) ActiveScan(ctx context.Context, endpoint string, allowPrivate 
 	if err != nil {
 		return nil, err
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("unexpected default HTTP transport type")
+	}
+	transport := defaultTransport.Clone()
 	if !allowPrivate {
 		dialer := &net.Dialer{Timeout: 10 * time.Second}
 		transport.DialContext = func(dialCtx context.Context, network, address string) (net.Conn, error) {
@@ -88,27 +92,36 @@ func (s *Scanner) ActiveScan(ctx context.Context, endpoint string, allowPrivate 
 		if requestErr != nil {
 			return nil, requestErr
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				return nil, closeErr
+			}
 			return nil, fmt.Errorf("endpoint requires authorization (HTTP %d)", resp.StatusCode)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				return nil, closeErr
+			}
 			return nil, fmt.Errorf("MCP endpoint returned HTTP %d", resp.StatusCode)
 		}
 		if value := resp.Header.Get("Mcp-Session-Id"); value != "" {
 			session = value
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxActiveResponse+1))
+		closeErr := resp.Body.Close()
 		if readErr != nil {
 			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
 		}
 		if len(body) > maxActiveResponse {
 			return nil, fmt.Errorf("MCP response exceeds %d bytes", maxActiveResponse)
 		}
 		body = extractSSEData(body)
 		var rpc rpcResponse
-		if err := json.Unmarshal(body, &rpc); err != nil {
-			return nil, fmt.Errorf("invalid JSON-RPC response: %w", err)
+		if unmarshalErr := json.Unmarshal(body, &rpc); unmarshalErr != nil {
+			return nil, fmt.Errorf("invalid JSON-RPC response: %w", unmarshalErr)
 		}
 		if rpc.Error != nil {
 			return nil, fmt.Errorf("JSON-RPC %d: %s", rpc.Error.Code, rpc.Error.Message)
@@ -140,8 +153,15 @@ func (s *Scanner) ActiveScan(ctx context.Context, endpoint string, allowPrivate 
 	if err != nil {
 		return nil, fmt.Errorf("sending initialized notification: %w", err)
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(notifyResp.Body, maxActiveResponse))
-	notifyResp.Body.Close()
+	if _, copyErr := io.Copy(io.Discard, io.LimitReader(notifyResp.Body, maxActiveResponse)); copyErr != nil {
+		if closeErr := notifyResp.Body.Close(); closeErr != nil {
+			return nil, fmt.Errorf("reading notification response: %v; closing response: %w", copyErr, closeErr)
+		}
+		return nil, copyErr
+	}
+	if closeErr := notifyResp.Body.Close(); closeErr != nil {
+		return nil, closeErr
+	}
 	if notifyResp.StatusCode < 200 || notifyResp.StatusCode >= 300 {
 		return nil, fmt.Errorf("initialized notification returned HTTP %d", notifyResp.StatusCode)
 	}
@@ -163,8 +183,8 @@ func (s *Scanner) ActiveScan(ctx context.Context, endpoint string, allowPrivate 
 			Tools      []Tool `json:"tools"`
 			NextCursor string `json:"nextCursor"`
 		}
-		if err := json.Unmarshal(toolsResult, &listed); err != nil {
-			return nil, fmt.Errorf("parsing tools/list: %w", err)
+		if unmarshalErr := json.Unmarshal(toolsResult, &listed); unmarshalErr != nil {
+			return nil, fmt.Errorf("parsing tools/list: %w", unmarshalErr)
 		}
 		server.Tools = append(server.Tools, listed.Tools...)
 		cursor = listed.NextCursor
@@ -207,7 +227,7 @@ func validateActiveURL(raw string, allowPrivate bool) (*url.URL, error) {
 	if err != nil || parsed.Hostname() == "" {
 		return nil, fmt.Errorf("invalid MCP endpoint URL")
 	}
-	if parsed.Scheme != "https" && !(allowPrivate && parsed.Scheme == "http") {
+	if parsed.Scheme != "https" && (!allowPrivate || parsed.Scheme != "http") {
 		return nil, fmt.Errorf("active scans require HTTPS; use --allow-private to permit HTTP development endpoints")
 	}
 	if parsed.User != nil {

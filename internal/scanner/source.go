@@ -50,7 +50,6 @@ func (s *Scanner) ScanSource(root string) (*ScanResult, error) {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
 		lineNo := 0
 		scan := bufio.NewScanner(file)
 		for scan.Scan() {
@@ -65,7 +64,12 @@ func (s *Scanner) ScanSource(root string) (*ScanResult, error) {
 				}
 			}
 		}
-		return scan.Err()
+		scanErr := scan.Err()
+		closeErr := file.Close()
+		if scanErr != nil {
+			return scanErr
+		}
+		return closeErr
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scanning source: %w", err)

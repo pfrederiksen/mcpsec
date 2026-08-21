@@ -29,16 +29,17 @@ func DefaultDiscoveryPaths() []string {
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 		paths = append(paths, filepath.Join(cwd, ".vscode", "mcp.json"), filepath.Join(cwd, ".mcp.json"))
 	}
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		paths = append(paths,
 			filepath.Join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
 			filepath.Join(home, "Library", "Application Support", "Code", "User", "mcp.json"),
 		)
-	} else if runtime.GOOS == "windows" {
+	case "windows":
 		if appData := os.Getenv("APPDATA"); appData != "" {
 			paths = append(paths, filepath.Join(appData, "Claude", "claude_desktop_config.json"), filepath.Join(appData, "Code", "User", "mcp.json"))
 		}
-	} else {
+	default:
 		paths = append(paths, filepath.Join(home, ".config", "Claude", "claude_desktop_config.json"), filepath.Join(home, ".config", "Code", "User", "mcp.json"))
 	}
 	return paths
