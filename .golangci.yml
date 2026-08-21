@@ -9,13 +9,13 @@ linters:
 
   settings:
     govet:
-      shadow: true
+      enable:
+        - shadow
     errcheck:
       check-type-assertions: true
       check-blank: true
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
 

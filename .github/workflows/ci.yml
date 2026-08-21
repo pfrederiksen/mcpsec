@@ -30,7 +30,7 @@ jobs:
           go-version-file: go.mod
       - uses: dominikh/staticcheck-action@v1
         with:
-          version: "latest"
+          version: "v0.7.0"
           install-go: false
           use-cache: false
 
