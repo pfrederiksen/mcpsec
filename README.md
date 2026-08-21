@@ -1,7 +1,6 @@
 ![MCPSec Audit banner](docs/assets/mcpsec-banner.png)
 
 [![CI](https://github.com/pfrederiksen/mcpsec/actions/workflows/ci.yml/badge.svg)](https://github.com/pfrederiksen/mcpsec/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/pfrederiksen/mcpsec)](https://goreportcard.com/report/github.com/pfrederiksen/mcpsec)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 # MCPSec Audit
@@ -303,7 +302,7 @@ jobs:
   mcpsec:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pfrederiksen/mcpsec@v1
         with:
           config: mcp-config.json
@@ -354,14 +353,14 @@ jobs:
   mcpsec:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pfrederiksen/mcpsec@v1
         id: scan
         with:
           config: mcp-config.json
           format: json
           output: mcpsec-findings.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: mcpsec-findings

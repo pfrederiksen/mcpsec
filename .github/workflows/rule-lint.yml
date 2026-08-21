@@ -14,13 +14,17 @@ jobs:
     name: Validate Rule YAML
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install yamllint
         run: pip install yamllint
       - name: Lint rule YAML files
         run: yamllint -c .yamllint.yml rules/
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.22"
+          go-version-file: go.mod
       - name: Validate rule schema
-        run: go run ./cmd/rule-validate ./rules/
+        run: |
+          for rule in rules/*.yaml rules/*.yml; do
+            [ -e "$rule" ] || continue
+            go run ./cmd/mcpsec rules validate "$rule"
+          done
