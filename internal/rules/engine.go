@@ -70,15 +70,15 @@ func (e *Engine) Evaluate(serverName string, server interface{}) []RuleFinding {
 }
 
 func isRemoteServer(value interface{}) bool {
-	server, ok := value.(map[string]interface{})
-	if !ok {
+	server, serverOK := value.(map[string]interface{})
+	if !serverOK {
 		return false
 	}
-	if rawURL, ok := server["url"].(string); ok && rawURL != "" {
+	if rawURL, urlOK := server["url"].(string); urlOK && rawURL != "" {
 		return true
 	}
-	transport, ok := server["transport"].(string)
-	if !ok {
+	transport, transportOK := server["transport"].(string)
+	if !transportOK {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(transport)) {

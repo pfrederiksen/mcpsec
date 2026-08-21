@@ -213,36 +213,36 @@ func inspectJSONValue(decoder *json.Decoder) error {
 	if err != nil {
 		return err
 	}
-	delim, ok := token.(json.Delim)
-	if !ok {
+	delim, delimOK := token.(json.Delim)
+	if !delimOK {
 		return nil
 	}
 	switch delim {
 	case '{':
 		seen := make(map[string]bool)
 		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
+			keyToken, keyErr := decoder.Token()
+			if keyErr != nil {
+				return keyErr
 			}
-			key, ok := keyToken.(string)
-			if !ok {
+			key, keyOK := keyToken.(string)
+			if !keyOK {
 				return fmt.Errorf("invalid object key")
 			}
 			if seen[key] {
 				return fmt.Errorf("duplicate JSON key %q", key)
 			}
 			seen[key] = true
-			if err := inspectJSONValue(decoder); err != nil {
-				return err
+			if inspectErr := inspectJSONValue(decoder); inspectErr != nil {
+				return inspectErr
 			}
 		}
 		_, err = decoder.Token()
 		return err
 	case '[':
 		for decoder.More() {
-			if err := inspectJSONValue(decoder); err != nil {
-				return err
+			if inspectErr := inspectJSONValue(decoder); inspectErr != nil {
+				return inspectErr
 			}
 		}
 		_, err = decoder.Token()
