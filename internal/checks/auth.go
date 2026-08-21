@@ -5,6 +5,9 @@ type AuthCheck struct{}
 
 func (c *AuthCheck) Run(ctx CheckContext) []CheckFinding {
 	var findings []CheckFinding
+	if !ctx.Server.IsRemote() {
+		return findings
+	}
 
 	if ctx.Server.Auth == nil {
 		findings = append(findings, CheckFinding{

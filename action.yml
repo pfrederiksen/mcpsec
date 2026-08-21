@@ -58,27 +58,43 @@ runs:
 
         # Determine OS and arch
         OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        case "$OS" in
+          linux|darwin) ;;
+          *) echo "Unsupported operating system: $OS" >&2; exit 1 ;;
+        esac
         ARCH="$(uname -m)"
         case "$ARCH" in
           x86_64)  ARCH="amd64" ;;
           aarch64) ARCH="arm64" ;;
           arm64)   ARCH="arm64" ;;
+          *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
         esac
 
         # Determine version
         if [ "$MCPSEC_VERSION" = "latest" ]; then
           MCPSEC_VERSION="$(gh release view --repo "$REPO" --json tagName -q '.tagName')"
         fi
+        if [[ ! "$MCPSEC_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+          echo "Invalid MCPSec version: $MCPSEC_VERSION" >&2
+          exit 1
+        fi
         VERSION_NUM="${MCPSEC_VERSION#v}"
 
-        # Download and extract
+        # Download, verify, and extract
         ARCHIVE="mcpsec_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
         URL="https://github.com/${REPO}/releases/download/${MCPSEC_VERSION}/${ARCHIVE}"
+        CHECKSUM_URL="https://github.com/${REPO}/releases/download/${MCPSEC_VERSION}/checksums.txt"
 
         echo "Downloading MCPSec ${MCPSEC_VERSION} for ${OS}/${ARCH}..."
         INSTALL_DIR="${RUNNER_TEMP}/mcpsec"
         mkdir -p "$INSTALL_DIR"
-        curl -sSfL "$URL" | tar -xz -C "$INSTALL_DIR"
+        curl --proto '=https' --tlsv1.2 -sSfL "$URL" -o "${INSTALL_DIR}/${ARCHIVE}"
+        curl --proto '=https' --tlsv1.2 -sSfL "$CHECKSUM_URL" -o "${INSTALL_DIR}/checksums.txt"
+        (
+          cd "$INSTALL_DIR"
+          grep "  ${ARCHIVE}$" checksums.txt | sha256sum --check --strict -
+          tar -xzf "$ARCHIVE"
+        )
         echo "${INSTALL_DIR}" >> "$GITHUB_PATH"
         echo "Installed mcpsec ${MCPSEC_VERSION}"
 
@@ -93,6 +109,7 @@ runs:
         INPUT_RULES: ${{ inputs.rules }}
         INPUT_INPUT_FORMAT: ${{ inputs.input-format }}
         INPUT_OUTPUT: ${{ inputs.output }}
+        SUMMARY_FILE: ${{ runner.temp }}/mcpsec-summary.json
       run: |
         set -uo pipefail
 
@@ -100,6 +117,7 @@ runs:
         ARGS+=("$INPUT_CONFIG")
         ARGS+=("--format" "$INPUT_FORMAT")
         ARGS+=("--input-format" "$INPUT_INPUT_FORMAT")
+        ARGS+=("--summary-output" "$SUMMARY_FILE")
 
         if [ -n "$INPUT_SEVERITY" ]; then
           ARGS+=("--severity" "$INPUT_SEVERITY")
@@ -119,8 +137,8 @@ runs:
         OUTPUT=$(mcpsec "${ARGS[@]}" 2>&1) || EXIT_CODE=$?
         echo "$OUTPUT"
 
-        # Extract findings count from table output
-        COUNT=$(echo "$OUTPUT" | grep -oP 'Total: \K[0-9]+' || echo "0")
+        # Read the format-independent machine summary.
+        COUNT=$(jq -r '.findings_count' "$SUMMARY_FILE")
         echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
 
         # If --fail-on triggered exit code 1, propagate it

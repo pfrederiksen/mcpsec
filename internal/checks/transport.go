@@ -31,7 +31,7 @@ func (c *TransportCheck) Run(ctx CheckContext) []CheckFinding {
 				OWASPMCP:    "MCP07",
 				Description: "MCP server communicates over plain HTTP, exposing data in transit to eavesdropping and tampering.",
 				Remediation: "Use HTTPS for all MCP server communications. Configure TLS 1.2+ with strong cipher suites.",
-				Match:       "url=" + ctx.Server.URL,
+				Match:       "url=" + safeURI(parsed),
 			})
 		}
 	}

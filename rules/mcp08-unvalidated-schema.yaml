@@ -10,8 +10,8 @@ references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
   path: "$.mcpServers.*.tools[*]"
-  pattern: "^(?!.*\"inputSchema\"\\s*:).*$"
-  type: regex
+  pattern: "\"inputSchema\"\\s*:"
+  type: not_regex
 remediation: |
   Define a JSON Schema inputSchema for every tool that validates all
   expected parameters, types, and constraints. Example:

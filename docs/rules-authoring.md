@@ -36,7 +36,8 @@ remediation: |
 | `description` | Yes | Detailed explanation of the security concern |
 | `references` | No | List of URLs for further reading |
 | `match` | Yes | Detection logic (see below) |
-| `match.type` | Yes | Match type: `regex` or `jsonpath` |
+| `match.type` | Yes | Match type: `regex`, `jsonpath`, or `not_regex` |
+| `scope` | No | `remote` to run only against network servers; omitted/`any` runs against all servers |
 | `match.pattern` | Yes | Regex pattern or JSONPath expression |
 | `match.path` | No | JSONPath to the config element being matched |
 | `remediation` | Yes | Actionable fix guidance |
@@ -57,7 +58,7 @@ The pattern is compiled as a Go regexp and matched against the entire config fil
 
 ### JSONPath Match
 
-Combines a JSONPath expression (for documentation/context) with a regex pattern:
+Evaluates a JSONPath expression and applies the regex to each selected value:
 
 ```yaml
 match:
@@ -66,7 +67,9 @@ match:
   pattern: "sk-[a-zA-Z0-9]{20,}"
 ```
 
-Currently, the JSONPath `path` field is documentary. The `pattern` is still matched against the full config text.
+Supported JSONPath features are object fields, `*`/`[*]` wildcards, and recursive descent such as `..env`. Paths beginning with `$.mcpServers.*` are evaluated relative to each server so findings are attributed correctly.
+
+Use `not_regex` with a path to report a finding when a selected value does not contain the pattern. This supports missing-field checks without regex lookarounds, which Go regular expressions intentionally do not implement.
 
 ## Severity Guidelines
 

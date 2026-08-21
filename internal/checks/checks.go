@@ -1,6 +1,9 @@
 package checks
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // CheckFinding is a finding produced by a check.
 type CheckFinding struct {
@@ -79,4 +82,17 @@ type RateLimitConfig struct {
 	Enabled    bool
 	MaxRPS     int
 	MaxPayload int
+}
+
+// IsRemote reports whether the server communicates over a network transport.
+func (s ServerConfig) IsRemote() bool {
+	if s.URL != "" {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(s.Transport)) {
+	case "http", "https", "sse", "streamable-http", "websocket", "ws", "wss":
+		return true
+	default:
+		return false
+	}
 }

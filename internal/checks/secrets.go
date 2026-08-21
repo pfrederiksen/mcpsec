@@ -15,8 +15,8 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)ghp_[a-zA-Z0-9]{36}`),                 // GitHub PAT
 	regexp.MustCompile(`(?i)gho_[a-zA-Z0-9]{36}`),                 // GitHub OAuth
 	regexp.MustCompile(`(?i)AKIA[0-9A-Z]{16}`),                    // AWS access key
-	regexp.MustCompile(`(?i)xox[bpoas]-[a-zA-Z0-9\-]{10,}`),      // Slack tokens
-	regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*`),     // Bearer tokens
+	regexp.MustCompile(`(?i)xox[bpoas]-[a-zA-Z0-9\-]{10,}`),       // Slack tokens
+	regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*`),      // Bearer tokens
 	regexp.MustCompile(`(?i)-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY`), // PEM private keys
 }
 
@@ -58,7 +58,7 @@ func (c *SecretsCheck) Run(ctx CheckContext) []CheckFinding {
 
 	// Check auth config for inline credentials
 	if ctx.Server.Auth != nil {
-		if ctx.Server.Auth.Token != "" {
+		if ctx.Server.Auth.Token != "" && !isSecretReference(ctx.Server.Auth.Token) {
 			findings = append(findings, CheckFinding{
 				RuleID:      "MCP04-003",
 				Name:        "Inline auth token in configuration",
@@ -69,7 +69,7 @@ func (c *SecretsCheck) Run(ctx CheckContext) []CheckFinding {
 				Match:       "auth.token",
 			})
 		}
-		if ctx.Server.Auth.APIKey != "" {
+		if ctx.Server.Auth.APIKey != "" && !isSecretReference(ctx.Server.Auth.APIKey) {
 			findings = append(findings, CheckFinding{
 				RuleID:      "MCP04-004",
 				Name:        "Inline API key in configuration",
@@ -96,7 +96,7 @@ func containsSecret(key, val string) bool {
 		}
 	}
 
-	if hasSensitiveKey && len(val) >= 8 && !strings.HasPrefix(val, "${") && !strings.HasPrefix(val, "$") {
+	if hasSensitiveKey && len(val) >= 8 && !isSecretReference(val) {
 		return true
 	}
 
@@ -107,4 +107,11 @@ func containsSecret(key, val string) bool {
 	}
 
 	return false
+}
+
+func isSecretReference(value string) bool {
+	value = strings.TrimSpace(value)
+	return strings.HasPrefix(value, "${") || strings.HasPrefix(value, "$") ||
+		strings.HasPrefix(value, "env:") || strings.HasPrefix(value, "secret://") ||
+		strings.HasPrefix(value, "vault://")
 }

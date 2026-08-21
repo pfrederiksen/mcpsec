@@ -1,27 +1,13 @@
 package checks
 
 import (
+	"net/netip"
 	"net/url"
 	"strings"
 )
 
 // UnsafeResourceCheck detects MCP05 — Unsafe Resource Access (SSRF-equivalent).
 type UnsafeResourceCheck struct{}
-
-var internalNetworks = []string{
-	"localhost",
-	"127.0.0.1",
-	"0.0.0.0",
-	"10.",
-	"172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
-	"172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.",
-	"172.28.", "172.29.", "172.30.", "172.31.",
-	"192.168.",
-	"169.254.",
-	"[::1]",
-	"metadata.google.internal",
-	"169.254.169.254",
-}
 
 var dangerousSchemes = map[string]bool{
 	"file":   true,
@@ -48,29 +34,47 @@ func (c *UnsafeResourceCheck) Run(ctx CheckContext) []CheckFinding {
 				OWASPMCP:    "MCP05",
 				Description: "Tool URI uses a scheme that can be exploited for SSRF or local file access.",
 				Remediation: "Restrict tool URIs to https:// only. Implement an allowlist of permitted schemes and hosts.",
-				Match:       entry.source + " uri=" + entry.uri,
+				Match:       entry.source + " uri=" + safeURI(parsed),
 			})
 			continue
 		}
 
-		host := strings.ToLower(parsed.Hostname())
-		for _, internal := range internalNetworks {
-			if host == internal || strings.HasPrefix(host, internal) {
-				findings = append(findings, CheckFinding{
-					RuleID:      "MCP05-002",
-					Name:        "Tool URI targets internal network",
-					Severity:    "high",
-					OWASPMCP:    "MCP05",
-					Description: "Tool URI points to an internal or loopback address, which can be exploited for SSRF.",
-					Remediation: "Restrict tool URIs to external, validated endpoints. Implement network-level controls to prevent access to internal resources.",
-					Match:       entry.source + " uri=" + entry.uri,
-				})
-				break
-			}
+		host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+		if isInternalHost(host) {
+			findings = append(findings, CheckFinding{
+				RuleID:      "MCP05-002",
+				Name:        "Tool URI targets internal network",
+				Severity:    "high",
+				OWASPMCP:    "MCP05",
+				Description: "Tool URI points to an internal or loopback address, which can be exploited for SSRF.",
+				Remediation: "Restrict tool URIs to external, validated endpoints. Implement network-level controls to prevent access to internal resources.",
+				Match:       entry.source + " uri=" + safeURI(parsed),
+			})
 		}
 	}
 
 	return findings
+}
+
+func isInternalHost(host string) bool {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "metadata.google.internal" {
+		return true
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	return addr.IsPrivate() || addr.IsLoopback() || addr.IsUnspecified() || addr.IsLinkLocalUnicast()
+}
+
+func safeURI(parsed *url.URL) string {
+	copy := *parsed
+	copy.User = nil
+	copy.RawQuery = ""
+	copy.ForceQuery = false
+	copy.Fragment = ""
+	return copy.String()
 }
 
 type uriEntry struct {

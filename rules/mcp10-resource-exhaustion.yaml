@@ -2,6 +2,7 @@ id: MCP10-R01
 name: Missing Rate Limiting Configuration
 severity: medium
 owasp_mcp: MCP10
+scope: remote
 description: |
   Detects MCP server configurations that lack rate limiting controls.
   Without rate limits, servers are vulnerable to denial-of-service attacks,
@@ -11,8 +12,8 @@ references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
   path: "$.mcpServers.*"
-  pattern: "^(?!.*\"rateLimit\"\\s*:).*$"
-  type: regex
+  pattern: "\"rateLimit\"\\s*:"
+  type: not_regex
 remediation: |
   Add rate limiting configuration to every MCP server. Example:
     "rateLimit": {

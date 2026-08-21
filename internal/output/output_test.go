@@ -102,10 +102,10 @@ func TestWriteOCSF(t *testing.T) {
 
 func TestWriteTable(t *testing.T) {
 	tests := []struct {
-		name           string
-		findings       []FindingInput
-		expectColumns  []string
-		expectTotal    string
+		name             string
+		findings         []FindingInput
+		expectColumns    []string
+		expectTotal      string
 		expectNoFindings bool
 	}{
 		{
@@ -158,6 +158,14 @@ func TestWriteTable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWriteTableSanitizesControlCharactersAndDisablesColorForBuffers(t *testing.T) {
+	var buf bytes.Buffer
+	err := WriteTable(&buf, []FindingInput{{RuleID: "BAD\nID", Name: "\x1b[31mevil", Severity: "high", Resource: "server\ttwo"}})
+	require.NoError(t, err)
+	assert.NotContains(t, buf.String(), "\x1b")
+	assert.NotContains(t, buf.String(), "BAD\nID")
 }
 
 // ---------------------------------------------------------------------------

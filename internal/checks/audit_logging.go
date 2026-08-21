@@ -5,6 +5,9 @@ type AuditLoggingCheck struct{}
 
 func (c *AuditLoggingCheck) Run(ctx CheckContext) []CheckFinding {
 	var findings []CheckFinding
+	if !ctx.Server.IsRemote() {
+		return findings
+	}
 
 	if ctx.Server.Logging == nil {
 		findings = append(findings, CheckFinding{

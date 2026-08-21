@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -8,6 +9,32 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRejectsUnsupportedOrEmptyConfig(t *testing.T) {
+	for _, content := range []string{`{}`, `{"mcpServers":{}}`, `{"unrelated":true}`} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+		_, err := New().ScanFile(path)
+		assert.Error(t, err)
+	}
+}
+
+func TestRejectsDuplicateJSONKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	content := `{"mcpServers":{"server":{"url":"https://safe.example","url":"http://unsafe.example"}}}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	_, err := New().ScanFile(path)
+	assert.ErrorContains(t, err, "duplicate JSON key")
+}
+
+func TestFindingsAreDeterministicByServerName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"mcpServers":{"z":{"url":"http://z.example"},"a":{"url":"http://a.example"}}}`), 0o600))
+	result, err := New().ScanFile(path)
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Findings)
+	assert.Equal(t, "mcpserver:a", result.Findings[0].Resource)
+}
 
 // testdataDir returns the absolute path to the project's testdata directory.
 func testdataDir() string {
@@ -73,7 +100,7 @@ func TestScanDXTManifest(t *testing.T) {
 	for _, f := range result.Findings {
 		owaspCategories[f.OWASPMCP] = true
 	}
-	assert.True(t, owaspCategories["MCP03"], "should detect missing auth")
+	assert.False(t, owaspCategories["MCP03"], "local command-based DXT servers do not require network auth")
 	assert.True(t, owaspCategories["MCP04"], "should detect secrets in env")
 
 	// Verify the resource name uses the display_name from DXT
@@ -111,10 +138,10 @@ func TestScanSafeServer(t *testing.T) {
 
 func TestSeverityFilter(t *testing.T) {
 	tests := []struct {
-		name             string
-		severity         []string
-		expectFindings   bool
-		allowedSeverity  string
+		name              string
+		severity          []string
+		expectFindings    bool
+		allowedSeverity   string
 		forbiddenSeverity string
 	}{
 		{

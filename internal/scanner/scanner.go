@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/pfrederiksen/mcpsec/internal/checks"
@@ -38,6 +39,8 @@ const (
 	FormatDXT        InputFormat = "dxt"
 	FormatDXTDir     InputFormat = "dxtdir"
 )
+
+const maxConfigSize = 10 << 20
 
 // MCPServerConfig represents a parsed MCP server configuration file.
 type MCPServerConfig struct {
@@ -178,12 +181,17 @@ func (s *Scanner) ScanFile(path string) (*ScanResult, error) {
 	if info.IsDir() && format == FormatAuto {
 		return s.scanDXTDirectory(path)
 	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("expected a config file, got directory: %s", path)
+	}
+	if info.Size() > maxConfigSize {
+		return nil, fmt.Errorf("config file exceeds %d byte limit", maxConfigSize)
+	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
-
 	config, err := s.parseConfig(data, path, format)
 	if err != nil {
 		return nil, err
@@ -192,8 +200,63 @@ func (s *Scanner) ScanFile(path string) (*ScanResult, error) {
 	return s.scanConfig(config, data, filepath.Base(path))
 }
 
+func rejectDuplicateJSONKeys(data []byte) error {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	if err := inspectJSONValue(decoder); err != nil {
+		return err
+	}
+	return nil
+}
+
+func inspectJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case '{':
+		seen := make(map[string]bool)
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("invalid object key")
+			}
+			if seen[key] {
+				return fmt.Errorf("duplicate JSON key %q", key)
+			}
+			seen[key] = true
+			if err := inspectJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err = decoder.Token()
+		return err
+	case '[':
+		for decoder.More() {
+			if err := inspectJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err = decoder.Token()
+		return err
+	default:
+		return nil
+	}
+}
+
 // parseConfig parses data into MCPServerConfig, auto-detecting format if needed.
 func (s *Scanner) parseConfig(data []byte, path string, format InputFormat) (*MCPServerConfig, error) {
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
 	if format == FormatDXT {
 		return parseDXTManifest(data)
 	}
@@ -202,6 +265,9 @@ func (s *Scanner) parseConfig(data []byte, path string, format InputFormat) (*MC
 		var config MCPServerConfig
 		if err := json.Unmarshal(data, &config); err != nil {
 			return nil, fmt.Errorf("parsing config file: %w", err)
+		}
+		if len(config.MCPServers) == 0 {
+			return nil, fmt.Errorf("parsing config file: no MCP servers found")
 		}
 		return &config, nil
 	}
@@ -225,12 +291,14 @@ func (s *Scanner) parseConfig(data []byte, path string, format InputFormat) (*MC
 		return parseDXTManifest(data)
 	}
 
-	// Return the empty mcpServers config (no servers found)
-	return &config, nil
+	return nil, fmt.Errorf("unsupported config format: expected a non-empty mcpServers object or DXT manifest")
 }
 
 // parseDXTManifest converts a DXT manifest.json into MCPServerConfig.
 func parseDXTManifest(data []byte) (*MCPServerConfig, error) {
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return nil, fmt.Errorf("parsing DXT manifest: %w", err)
+	}
 	var manifest DXTManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil, fmt.Errorf("parsing DXT manifest: %w", err)
@@ -239,6 +307,9 @@ func parseDXTManifest(data []byte) (*MCPServerConfig, error) {
 	name := manifest.DisplayName
 	if name == "" {
 		name = manifest.Name
+	}
+	if name == "" {
+		return nil, fmt.Errorf("parsing DXT manifest: missing name or display_name")
 	}
 
 	server := manifest.Server.MCPConfig
@@ -270,15 +341,26 @@ func (s *Scanner) scanDXTDirectory(dir string) (*ScanResult, error) {
 			continue
 		}
 		manifestPath := filepath.Join(dir, entry.Name(), "manifest.json")
+		manifestInfo, err := os.Stat(manifestPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("reading DXT manifest %s: %w", entry.Name(), err)
+		}
+		if manifestInfo.Size() > maxConfigSize {
+			return nil, fmt.Errorf("DXT manifest %s exceeds %d byte limit", entry.Name(), maxConfigSize)
+		}
 		data, err := os.ReadFile(manifestPath)
 		if err != nil {
-			continue // No manifest.json — not a DXT extension
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("reading DXT manifest %s: %w", entry.Name(), err)
 		}
-
 		config, err := parseDXTManifest(data)
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", entry.Name(), err)
-			continue
+			return nil, fmt.Errorf("parsing DXT manifest %s: %w", entry.Name(), err)
 		}
 
 		sub, err := s.scanConfig(config, data, entry.Name())
@@ -298,7 +380,13 @@ func (s *Scanner) scanConfig(config *MCPServerConfig, rawData []byte, target str
 		Target: target,
 	}
 
-	for serverName, server := range config.MCPServers {
+	serverNames := make([]string, 0, len(config.MCPServers))
+	for serverName := range config.MCPServers {
+		serverNames = append(serverNames, serverName)
+	}
+	sort.Strings(serverNames)
+	for _, serverName := range serverNames {
+		server := config.MCPServers[serverName]
 		ctx := checks.CheckContext{
 			ServerName: serverName,
 			Server:     toCheckServer(server),
@@ -324,7 +412,7 @@ func (s *Scanner) scanConfig(config *MCPServerConfig, rawData []byte, target str
 		}
 
 		// Also run YAML rule engine checks
-		ruleFindings := s.RuleEngine.Evaluate(serverName, server, rawData)
+		ruleFindings := s.RuleEngine.Evaluate(serverName, server)
 		for _, f := range ruleFindings {
 			if s.severityAllowed(f.Severity) {
 				result.Findings = append(result.Findings, Finding{

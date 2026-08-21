@@ -11,8 +11,8 @@ references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
   path: "$.mcpServers.*.tools[*]"
-  pattern: "^(?!.*\"hash\"\\s*:).*$"
-  type: regex
+  pattern: "\"hash\"\\s*:"
+  type: not_regex
 remediation: |
   Add a cryptographic hash to every tool definition to enable integrity
   verification. Use SHA-256 or stronger. Example:

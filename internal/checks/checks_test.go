@@ -14,9 +14,9 @@ import (
 
 func TestPromptInjectionCheck(t *testing.T) {
 	tests := []struct {
-		name      string
-		ctx       CheckContext
-		wantFind  bool
+		name       string
+		ctx        CheckContext
+		wantFind   bool
 		wantRuleID string
 	}{
 		{
@@ -32,7 +32,7 @@ func TestPromptInjectionCheck(t *testing.T) {
 					},
 				},
 			},
-			wantFind:  true,
+			wantFind:   true,
 			wantRuleID: "MCP01-001",
 		},
 		{
@@ -157,6 +157,7 @@ func TestAuthCheck(t *testing.T) {
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
+					URL:  "https://example.com/mcp",
 					Auth: nil,
 				},
 			},
@@ -168,8 +169,17 @@ func TestAuthCheck(t *testing.T) {
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
+					URL:  "https://example.com/mcp",
 					Auth: &AuthConfig{Type: "oauth2"},
 				},
+			},
+			wantFind: false,
+		},
+		{
+			name: "local stdio needs no network auth",
+			ctx: CheckContext{
+				ServerName: "local",
+				Server:     ServerConfig{Command: "node", Transport: "stdio"},
 			},
 			wantFind: false,
 		},
@@ -178,6 +188,7 @@ func TestAuthCheck(t *testing.T) {
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
+					URL:  "https://example.com/mcp",
 					Auth: &AuthConfig{},
 				},
 			},
@@ -608,6 +619,7 @@ func TestAuditLoggingCheck(t *testing.T) {
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
+					URL:     "https://example.com/mcp",
 					Logging: nil,
 				},
 			},
@@ -619,6 +631,7 @@ func TestAuditLoggingCheck(t *testing.T) {
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
+					URL: "https://example.com/mcp",
 					Logging: &LoggingConfig{
 						Enabled: true,
 						Level:   "info",
@@ -661,6 +674,7 @@ func TestResourceExhaustionCheck(t *testing.T) {
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
+					URL:       "https://example.com/mcp",
 					RateLimit: nil,
 				},
 			},
@@ -672,6 +686,7 @@ func TestResourceExhaustionCheck(t *testing.T) {
 			ctx: CheckContext{
 				ServerName: "test-server",
 				Server: ServerConfig{
+					URL: "https://example.com/mcp",
 					RateLimit: &RateLimitConfig{
 						Enabled:    true,
 						MaxRPS:     100,

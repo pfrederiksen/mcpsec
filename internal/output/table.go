@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -30,16 +31,20 @@ func WriteTable(w io.Writer, findings []FindingInput) error {
 	}
 
 	for _, f := range findings {
-		name := f.Name
+		id := sanitizeCell(f.RuleID)
+		name := sanitizeCell(f.Name)
 		if len(name) > nameW {
 			name = name[:nameW-3] + "..."
 		}
-		resource := f.Resource
+		resource := sanitizeCell(f.Resource)
 		if len(resource) > resW {
 			resource = resource[:resW-3] + "..."
 		}
-		sev := colorSeverity(f.Severity)
-		if _, err := fmt.Fprintf(w, "%-*s %-*s %-*s %-*s\n", idW, f.RuleID, nameW, name, sevW, sev, resW, resource); err != nil {
+		sev := strings.ToUpper(f.Severity)
+		if shouldColor(w) {
+			sev = colorSeverity(f.Severity)
+		}
+		if _, err := fmt.Fprintf(w, "%-*s %-*s %-*s %-*s\n", idW, id, nameW, name, sevW, sev, resW, resource); err != nil {
 			return err
 		}
 	}
@@ -49,6 +54,27 @@ func WriteTable(w io.Writer, findings []FindingInput) error {
 	}
 	_, err := fmt.Fprintf(w, "Total: %d finding(s)\n", len(findings))
 	return err
+}
+
+func sanitizeCell(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, value)
+}
+
+func shouldColor(w io.Writer) bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 func colorSeverity(sev string) string {

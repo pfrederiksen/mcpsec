@@ -195,6 +195,7 @@ Flags:
       --rules string          Custom rules directory
       --severity string       Filter by severity (comma-separated: critical,high,medium,low,info)
       --input-format string   Input format: auto, mcpservers, dxt, dxtdir (default "auto")
+      --summary-output string Write a JSON scan summary to this file
       --fail-on string        Exit with code 1 if findings at or above this severity
       --splunk-url string     Splunk HEC endpoint URL
       --splunk-token string   Splunk HEC token (also reads MCPSEC_SPLUNK_TOKEN env var)

@@ -5,6 +5,9 @@ type ResourceExhaustionCheck struct{}
 
 func (c *ResourceExhaustionCheck) Run(ctx CheckContext) []CheckFinding {
 	var findings []CheckFinding
+	if !ctx.Server.IsRemote() {
+		return findings
+	}
 
 	if ctx.Server.RateLimit == nil || !ctx.Server.RateLimit.Enabled {
 		findings = append(findings, CheckFinding{

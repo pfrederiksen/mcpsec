@@ -129,7 +129,7 @@ func TestValidateRule(t *testing.T) {
 			name: "invalid rule - missing all required fields",
 			rule: &Rule{},
 			// Missing: id, name, invalid severity, owasp_mcp, match.type
-			wantErrors: 5,
+			wantErrors: 6,
 		},
 		{
 			name: "invalid severity value",
@@ -138,7 +138,7 @@ func TestValidateRule(t *testing.T) {
 				Name:     "Bad Severity",
 				Severity: "extreme",
 				OWASPMCP: "MCP01",
-				Match:    MatchDef{Type: "regex"},
+				Match:    MatchDef{Type: "regex", Pattern: ".*"},
 			},
 			wantErrors: 1,
 		},
@@ -149,7 +149,7 @@ func TestValidateRule(t *testing.T) {
 				Name:     "Bad Match Type",
 				Severity: "medium",
 				OWASPMCP: "MCP02",
-				Match:    MatchDef{Type: "xpath"},
+				Match:    MatchDef{Type: "xpath", Pattern: ".*"},
 			},
 			wantErrors: 1,
 		},
@@ -267,4 +267,10 @@ severity: high
 			}
 		})
 	}
+}
+
+func TestBundledRulesValidate(t *testing.T) {
+	rules, err := LoadDirectory(filepath.Join("..", "..", "rules"))
+	require.NoError(t, err)
+	assert.Len(t, rules, 10)
 }

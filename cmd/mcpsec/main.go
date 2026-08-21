@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +13,17 @@ import (
 	"github.com/pfrederiksen/mcpsec/internal/scanner"
 	"github.com/spf13/cobra"
 )
+
+var errFindingsThreshold = errors.New("findings met failure threshold")
+
+var validSeverities = map[string]bool{"critical": true, "high": true, "medium": true, "low": true, "info": true}
+
+func validateChoice(flag, value string, valid map[string]bool) error {
+	if !valid[strings.ToLower(strings.TrimSpace(value))] {
+		return fmt.Errorf("invalid value for --%s: %q", flag, value)
+	}
+	return nil
+}
 
 var (
 	version = "dev"
@@ -37,6 +50,7 @@ func main() {
 		failOn        string
 		quiet         bool
 		inputFormat   string
+		summaryOutput string
 	)
 
 	scanCmd := &cobra.Command{
@@ -44,6 +58,24 @@ func main() {
 		Short: "Scan an MCP server configuration file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			if err := validateChoice("format", formatFlag, map[string]bool{"table": true, "json": true, "splunk": true}); err != nil {
+				return err
+			}
+			if err := validateChoice("input-format", inputFormat, map[string]bool{"auto": true, "mcpservers": true, "dxt": true, "dxtdir": true}); err != nil {
+				return err
+			}
+			if severityFlag != "" {
+				for _, severity := range strings.Split(severityFlag, ",") {
+					if err := validateChoice("severity", severity, validSeverities); err != nil {
+						return err
+					}
+				}
+			}
+			if failOn != "" {
+				if err := validateChoice("fail-on", failOn, validSeverities); err != nil {
+					return err
+				}
+			}
 			s := scanner.New()
 
 			if rulesDir != "" {
@@ -89,6 +121,17 @@ func main() {
 					Description: f.Description,
 					Remediation: f.Remediation,
 					Resource:    f.Resource,
+				}
+			}
+			if summaryOutput != "" {
+				summary, err := json.Marshal(struct {
+					FindingsCount int `json:"findings_count"`
+				}{len(findings)})
+				if err != nil {
+					return fmt.Errorf("creating summary: %w", err)
+				}
+				if err := os.WriteFile(filepath.Clean(summaryOutput), append(summary, '\n'), 0o600); err != nil {
+					return fmt.Errorf("writing summary file: %w", err)
 				}
 			}
 
@@ -150,13 +193,10 @@ func main() {
 
 			if failOn != "" {
 				severityOrder := map[string]int{"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-				threshold, ok := severityOrder[strings.ToLower(failOn)]
-				if !ok {
-					return fmt.Errorf("invalid severity for --fail-on: %s", failOn)
-				}
+				threshold := severityOrder[strings.ToLower(failOn)]
 				for _, f := range result.Findings {
 					if sev, ok := severityOrder[strings.ToLower(f.Severity)]; ok && sev <= threshold {
-						os.Exit(1)
+						return errFindingsThreshold
 					}
 				}
 			}
@@ -175,6 +215,7 @@ func main() {
 	scanCmd.Flags().StringVar(&failOn, "fail-on", "", "Exit with code 1 if findings at or above this severity")
 	scanCmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress output except findings")
 	scanCmd.Flags().StringVar(&inputFormat, "input-format", "auto", "Input format: auto, mcpservers, dxt, dxtdir")
+	scanCmd.Flags().StringVar(&summaryOutput, "summary-output", "", "Write a JSON scan summary to this file")
 
 	// rules command
 	rulesCmd := &cobra.Command{
@@ -222,7 +263,7 @@ func main() {
 				for _, e := range errors {
 					fmt.Printf("  - %s\n", e)
 				}
-				os.Exit(1)
+				return fmt.Errorf("rule validation failed: %s", strings.Join(errors, "; "))
 			}
 			fmt.Printf("Rule %s (%s) is valid.\n", rule.ID, rule.Name)
 			return nil
@@ -243,6 +284,7 @@ func main() {
 
 	rootCmd.AddCommand(scanCmd, rulesCmd, versionCmd)
 
+	rootCmd.SilenceUsage = true
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
