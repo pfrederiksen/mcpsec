@@ -77,7 +77,10 @@ func isRemoteServer(value interface{}) bool {
 	if rawURL, ok := server["url"].(string); ok && rawURL != "" {
 		return true
 	}
-	transport, _ := server["transport"].(string)
+	transport, ok := server["transport"].(string)
+	if !ok {
+		return false
+	}
 	switch strings.ToLower(strings.TrimSpace(transport)) {
 	case "http", "https", "sse", "streamable-http", "websocket", "ws", "wss":
 		return true
@@ -168,7 +171,10 @@ func stringify(value interface{}) string {
 	if s, ok := value.(string); ok {
 		return s
 	}
-	b, _ := json.Marshal(value)
+	b, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
 	return string(b)
 }
 
