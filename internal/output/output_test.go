@@ -261,7 +261,8 @@ func TestWriteSplunkToWriter(t *testing.T) {
 					_, present := eventMap["unmapped"]
 					assert.False(t, present)
 				} else {
-					unmapped, ok := eventMap["unmapped"].(map[string]interface{})
+					var unmapped map[string]interface{}
+					unmapped, ok = eventMap["unmapped"].(map[string]interface{})
 					require.True(t, ok, "event should contain unmapped.owasp_mcp")
 					assert.Equal(t, tt.findings[i].OWASPMCP, unmapped["owasp_mcp"])
 				}

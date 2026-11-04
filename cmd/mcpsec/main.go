@@ -68,7 +68,7 @@ func main() {
 				rules: &rulesDir, splunkURL: &scanEmit.splunkURL, splunkToken: &scanEmit.splunkToken, splunkIndex: &scanEmit.splunkIndex,
 				baseline: &baselinePath, inputFormat: &inputFormat, approved: &approvedServers, ignore: &ignoreFlag,
 			})
-			if err := validateEmit(scanEmit, severityFlag, inputFormat); err != nil {
+			if err = validateEmit(scanEmit, severityFlag, inputFormat); err != nil {
 				return err
 			}
 			s, err := prepareScanner(rulesDir, severityFlag, ignoreFlag, baselinePath, approvedServers, baselineKey(cfg))
@@ -136,7 +136,7 @@ func main() {
 				rules: &rulesDir, splunkURL: &discoverEmit.splunkURL, splunkToken: &discoverEmit.splunkToken, splunkIndex: &discoverEmit.splunkIndex,
 				approved: &approvedServers, ignore: &ignoreFlag,
 			})
-			if err := validateEmit(discoverEmit, severityFlag, ""); err != nil {
+			if err = validateEmit(discoverEmit, severityFlag, ""); err != nil {
 				return err
 			}
 			s, err := prepareScanner(rulesDir, severityFlag, ignoreFlag, "", approvedServers, nil)
@@ -199,7 +199,7 @@ func main() {
 				rules: &rulesDir, splunkURL: &activeEmit.splunkURL, splunkToken: &activeEmit.splunkToken, splunkIndex: &activeEmit.splunkIndex,
 				ignore: &ignoreFlag,
 			})
-			if err := validateEmit(activeEmit, severityFlag, ""); err != nil {
+			if err = validateEmit(activeEmit, severityFlag, ""); err != nil {
 				return err
 			}
 			s, err := prepareScanner(rulesDir, severityFlag, ignoreFlag, "", "", nil)
@@ -235,7 +235,7 @@ func main() {
 				format: &sourceEmit.format, output: &sourceEmit.output, severity: &severityFlag, failOn: &sourceEmit.failOn,
 				ignore: &ignoreFlag,
 			})
-			if err := validateEmit(sourceEmit, severityFlag, ""); err != nil {
+			if err = validateEmit(sourceEmit, severityFlag, ""); err != nil {
 				return err
 			}
 			s, err := prepareScanner("", severityFlag, ignoreFlag, "", "", nil)
