@@ -15,32 +15,65 @@ type DiscoveredConfig struct {
 	Servers []string `json:"servers"`
 }
 
-// DefaultDiscoveryPaths returns established per-user MCP client config locations.
+// DefaultDiscoveryPaths returns established per-user and project MCP client config locations.
 func DefaultDiscoveryPaths() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil
+		home = ""
 	}
-	paths := []string{
-		filepath.Join(home, ".cursor", "mcp.json"),
-		filepath.Join(home, ".codeium", "windsurf", "mcp_config.json"),
-		filepath.Join(home, ".copilot", "mcp-config.json"),
+	cwd, cwdErr := os.Getwd()
+	if cwdErr != nil {
+		cwd = ""
 	}
-	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
-		paths = append(paths, filepath.Join(cwd, ".vscode", "mcp.json"), filepath.Join(cwd, ".mcp.json"))
-	}
-	switch runtime.GOOS {
-	case "darwin":
+	return discoveryPaths(home, cwd, os.Getenv("APPDATA"), runtime.GOOS)
+}
+
+func discoveryPaths(home, cwd, appData, goos string) []string {
+	var paths []string
+	if home != "" {
 		paths = append(paths,
-			filepath.Join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
-			filepath.Join(home, "Library", "Application Support", "Code", "User", "mcp.json"),
+			filepath.Join(home, ".cursor", "mcp.json"),
+			filepath.Join(home, ".codeium", "windsurf", "mcp_config.json"),
+			filepath.Join(home, ".copilot", "mcp-config.json"),
+			filepath.Join(home, ".claude.json"),
+			filepath.Join(home, ".gemini", "settings.json"),
 		)
+	}
+	if cwd != "" {
+		paths = append(paths,
+			filepath.Join(cwd, ".vscode", "mcp.json"),
+			filepath.Join(cwd, ".mcp.json"),
+			filepath.Join(cwd, ".cursor", "mcp.json"),
+			filepath.Join(cwd, ".claude", "mcp.json"),
+			filepath.Join(cwd, ".gemini", "settings.json"),
+			filepath.Join(cwd, ".zed", "settings.json"),
+		)
+	}
+	switch goos {
+	case "darwin":
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+				filepath.Join(home, "Library", "Application Support", "Code", "User", "mcp.json"),
+				filepath.Join(home, "Library", "Application Support", "Zed", "settings.json"),
+			)
+		}
 	case "windows":
-		if appData := os.Getenv("APPDATA"); appData != "" {
-			paths = append(paths, filepath.Join(appData, "Claude", "claude_desktop_config.json"), filepath.Join(appData, "Code", "User", "mcp.json"))
+		if appData != "" {
+			paths = append(paths,
+				filepath.Join(appData, "Claude", "claude_desktop_config.json"),
+				filepath.Join(appData, "Code", "User", "mcp.json"),
+				filepath.Join(appData, "Zed", "settings.json"),
+			)
 		}
 	default:
-		paths = append(paths, filepath.Join(home, ".config", "Claude", "claude_desktop_config.json"), filepath.Join(home, ".config", "Code", "User", "mcp.json"))
+		if home != "" {
+			paths = append(paths,
+				filepath.Join(home, ".config", "Claude", "claude_desktop_config.json"),
+				filepath.Join(home, ".config", "Code", "User", "mcp.json"),
+				filepath.Join(home, ".config", "zed", "settings.json"),
+			)
+		}
 	}
 	return paths
 }
@@ -114,7 +147,7 @@ func ShadowFindings(discovered []DiscoveredConfig, approved []string) []Finding 
 	for _, config := range discovered {
 		for _, server := range config.Servers {
 			if !allow[strings.ToLower(server)] {
-				findings = append(findings, Finding{RuleID: "MCP09-101", Name: "Unapproved shadow MCP server", Severity: "high", OWASPMCP: "MCP09", Description: "A configured MCP server is absent from the supplied approved inventory.", Remediation: "Review ownership and provenance, then remove the server or add it to the governed inventory.", Resource: "mcpserver:" + server, Match: config.Path})
+				findings = append(findings, Finding{RuleID: "MCP09-101", Name: "Unapproved shadow MCP server", Severity: "high", OWASPMCP: "MCP09", Description: "A configured MCP server is absent from the supplied approved inventory.", Remediation: "Review ownership and provenance, then remove the server or add it to the governed inventory.", Resource: "mcpserver:" + server, Match: config.Path, Location: config.Path, Line: 1})
 			}
 		}
 	}
@@ -123,7 +156,19 @@ func ShadowFindings(discovered []DiscoveredConfig, approved []string) []Finding 
 
 func inferClients(path string) []string {
 	lower := strings.ToLower(path)
-	for _, candidate := range []struct{ needle, client string }{{"claude", "Claude Desktop"}, {"cursor", "Cursor"}, {"windsurf", "Windsurf"}, {".vscode", "VS Code"}, {"/code/user/", "VS Code"}, {".copilot", "GitHub Copilot"}} {
+	for _, candidate := range []struct{ needle, client string }{
+		{".gemini", "Gemini CLI"},
+		{".zed", "Zed"},
+		{"/zed/", "Zed"},
+		{".claude", "Claude Code"},
+		{"claude_desktop", "Claude Desktop"},
+		{"claude", "Claude Desktop"},
+		{"cursor", "Cursor"},
+		{"windsurf", "Windsurf"},
+		{".vscode", "VS Code"},
+		{"/code/user/", "VS Code"},
+		{".copilot", "GitHub Copilot"},
+	} {
 		if strings.Contains(lower, candidate.needle) {
 			return []string{candidate.client}
 		}

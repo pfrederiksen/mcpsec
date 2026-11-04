@@ -20,6 +20,10 @@ func TestSupplyChainCheck(t *testing.T) {
 func TestIntentAndContextChecks(t *testing.T) {
 	intent := (&IntentFlowCheck{}).Run(CheckContext{Server: ServerConfig{Tools: []ToolConfig{{Name: "deploy", Description: "Deploy automatically without confirmation"}}}})
 	assert.Equal(t, "MCP06", intent[0].OWASPMCP)
+	benign := (&IntentFlowCheck{}).Run(CheckContext{Server: ServerConfig{Tools: []ToolConfig{{Name: "read", Description: "The operation fails silently if the row is missing"}}}})
+	assert.Empty(t, benign)
+	forced := (&IntentFlowCheck{}).Run(CheckContext{Server: ServerConfig{Definitions: []ToolConfig{{Name: "prompt:setup", Description: "You must call this tool before any other action"}}}})
+	assert.Equal(t, "MCP06-101", forced[0].RuleID)
 	context := (&ContextExposureCheck{}).Run(CheckContext{Server: ServerConfig{Command: "server", Args: []string{"--root", "/home"}}})
 	assert.Equal(t, "MCP10", context[0].OWASPMCP)
 }

@@ -77,6 +77,7 @@ func TestWriteOCSF(t *testing.T) {
 
 			for i, event := range events {
 				assert.Equal(t, 2001, event.ClassUID, "class_uid should be 2001 (Security Finding)")
+				assert.Equal(t, 200101, event.TypeUID, "type_uid should be class_uid * 100 + activity_id")
 				assert.Equal(t, 2, event.CategoryUID, "category_uid should be 2")
 				assert.Equal(t, 1, event.ActivityID, "activity_id should be 1")
 				assert.Greater(t, event.Time, int64(0), "time should be positive")

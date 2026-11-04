@@ -7,19 +7,28 @@ import (
 )
 
 type RuleFinding struct {
-	RuleID, Name, Severity, OWASPMCP, Description, Remediation, Match string
+	RuleID, Name, Severity, OWASPMCP, Description, Remediation, Match, Field string
 }
 
 type Engine struct{ Rules []*Rule }
 
 func NewEngine() *Engine { return &Engine{} }
 
+// SetRules replaces the engine's rule set. A custom directory replaces the
+// embedded defaults instead of merging with them.
+func (e *Engine) SetRules(loaded []*Rule) {
+	if loaded == nil {
+		loaded = []*Rule{}
+	}
+	e.Rules = loaded
+}
+
 func (e *Engine) LoadFromDirectory(dir string) error {
 	loaded, err := LoadDirectory(dir)
 	if err != nil {
 		return err
 	}
-	e.Rules = append(e.Rules, loaded...)
+	e.SetRules(loaded)
 	return nil
 }
 
@@ -62,6 +71,7 @@ func (e *Engine) Evaluate(serverName string, server interface{}) []RuleFinding {
 				RuleID: rule.ID, Name: rule.Name, Severity: rule.Severity,
 				OWASPMCP: rule.OWASPMCP, Description: rule.Description,
 				Remediation: rule.Remediation, Match: redactMatch(match, rule.OWASPMCP),
+				Field: ruleField(rule.Match.Path),
 			})
 			break
 		}
@@ -176,6 +186,30 @@ func stringify(value interface{}) string {
 		return ""
 	}
 	return string(b)
+}
+
+func ruleField(path string) string {
+	lower := strings.ToLower(path)
+	switch {
+	case strings.Contains(lower, "description"):
+		return "description"
+	case strings.Contains(lower, "permission"):
+		return "permission"
+	case strings.Contains(lower, "env"):
+		return "secret"
+	case strings.Contains(lower, "url"), strings.Contains(lower, "uri"):
+		return "uri"
+	case strings.Contains(lower, "logging"):
+		return "logging"
+	case strings.Contains(lower, "auth"):
+		return "auth"
+	case strings.Contains(lower, "args"), strings.Contains(lower, "command"):
+		return "command"
+	case strings.Contains(lower, "tool"):
+		return "schema"
+	default:
+		return ""
+	}
 }
 
 func redactMatch(match, owaspMCP string) string {

@@ -1,0 +1,13 @@
+# Copy to mcpsec.yaml to enforce this policy for local runs and CI.
+# Flags override every value. Do not put the baseline signing key in this file;
+# name the environment variable that holds it.
+fail_on: high
+format: table
+input_format: auto
+# approved:
+#   - github
+#   - postgres
+# ignore: []
+# rules_dir: ./rules
+# baseline: mcpsec-baseline.json
+# baseline_key_env: MCPSEC_BASELINE_KEY

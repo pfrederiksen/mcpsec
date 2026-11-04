@@ -9,9 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pfrederiksen/mcpsec/internal/config"
 	"github.com/pfrederiksen/mcpsec/internal/output"
 	"github.com/pfrederiksen/mcpsec/internal/rules"
 	"github.com/pfrederiksen/mcpsec/internal/scanner"
+	bundled "github.com/pfrederiksen/mcpsec/rules"
 	"github.com/spf13/cobra"
 )
 
@@ -39,64 +41,39 @@ func main() {
 		Long:  "Security scanner for Model Context Protocol configurations, remote tool inventories, and server source code, aligned to the OWASP MCP Top 10:2025 beta.",
 	}
 
-	// scan command
+	var configPath string
+	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Policy file (default: ./mcpsec.yaml when present)")
+
+	var scanEmit emitOptions
 	var (
-		formatFlag    string
-		outputFlag    string
-		rulesDir      string
-		severityFlag  string
-		splunkURL     string
-		splunkToken   string
-		splunkIndex   string
-		failOn        string
-		quiet         bool
-		inputFormat   string
-		summaryOutput string
-		baselinePath  string
+		rulesDir        string
+		severityFlag    string
+		ignoreFlag      string
+		inputFormat     string
+		baselinePath    string
+		approvedServers string
 	)
 
 	scanCmd := &cobra.Command{
 		Use:   "scan [config-file]",
 		Short: "Scan an MCP server configuration file",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
-			if err := validateChoice("format", formatFlag, map[string]bool{"table": true, "json": true, "splunk": true}); err != nil {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.LoadDefault(configPath)
+			if err != nil {
 				return err
 			}
-			if err := validateChoice("input-format", inputFormat, map[string]bool{"auto": true, "mcpservers": true, "dxt": true, "dxtdir": true}); err != nil {
+			applyPolicy(cmd, cfg, policyFields{
+				format: &scanEmit.format, output: &scanEmit.output, severity: &severityFlag, failOn: &scanEmit.failOn,
+				rules: &rulesDir, splunkURL: &scanEmit.splunkURL, splunkToken: &scanEmit.splunkToken, splunkIndex: &scanEmit.splunkIndex,
+				baseline: &baselinePath, inputFormat: &inputFormat, approved: &approvedServers, ignore: &ignoreFlag,
+			})
+			if err := validateEmit(scanEmit, severityFlag, inputFormat); err != nil {
 				return err
 			}
-			if severityFlag != "" {
-				for _, severity := range strings.Split(severityFlag, ",") {
-					if err := validateChoice("severity", severity, validSeverities); err != nil {
-						return err
-					}
-				}
-			}
-			if failOn != "" {
-				if err := validateChoice("fail-on", failOn, validSeverities); err != nil {
-					return err
-				}
-			}
-			s := scanner.New()
-			s.BaselinePath = baselinePath
-
-			if rulesDir != "" {
-				cleanDir := filepath.Clean(rulesDir)
-				info, err := os.Stat(cleanDir)
-				if err != nil {
-					return fmt.Errorf("rules directory: %w", err)
-				}
-				if !info.IsDir() {
-					return fmt.Errorf("rules path is not a directory: %s", cleanDir)
-				}
-				if err := s.LoadRules(cleanDir); err != nil {
-					return fmt.Errorf("loading rules: %w", err)
-				}
-			}
-
-			if severityFlag != "" {
-				s.Severity = strings.Split(severityFlag, ",")
+			s, err := prepareScanner(rulesDir, severityFlag, ignoreFlag, baselinePath, approvedServers, baselineKey(cfg))
+			if err != nil {
+				return err
 			}
 
 			switch strings.ToLower(inputFormat) {
@@ -114,113 +91,17 @@ func main() {
 			if err != nil {
 				return err
 			}
-
-			findings := make([]output.FindingInput, len(result.Findings))
-			for i, f := range result.Findings {
-				findings[i] = output.FindingInput{
-					RuleID:      f.RuleID,
-					Name:        f.Name,
-					Severity:    f.Severity,
-					Description: f.Description,
-					Remediation: f.Remediation,
-					Resource:    f.Resource,
-					OWASPMCP:    f.OWASPMCP,
-				}
-			}
-			if summaryOutput != "" {
-				summary, err := json.Marshal(struct {
-					FindingsCount int `json:"findings_count"`
-				}{len(findings)})
-				if err != nil {
-					return fmt.Errorf("creating summary: %w", err)
-				}
-				if err := os.WriteFile(filepath.Clean(summaryOutput), append(summary, '\n'), 0o600); err != nil {
-					return fmt.Errorf("writing summary file: %w", err)
-				}
-			}
-
-			w := os.Stdout
-			if outputFlag != "" {
-				cleanPath := filepath.Clean(outputFlag)
-				// Verify output directory exists and is writable
-				outDir := filepath.Dir(cleanPath)
-				if info, err := os.Stat(outDir); err != nil || !info.IsDir() {
-					return fmt.Errorf("output directory does not exist: %s", outDir)
-				}
-				f, err := os.Create(cleanPath)
-				if err != nil {
-					return fmt.Errorf("creating output file: %w", err)
-				}
-				defer func() {
-					if cerr := f.Close(); cerr != nil && retErr == nil {
-						retErr = cerr
-					}
-				}()
-				w = f
-			}
-
-			switch strings.ToLower(formatFlag) {
-			case "json":
-				if err := output.WriteOCSF(w, findings, version); err != nil {
-					return err
-				}
-			case "splunk":
-				token := splunkToken
-				if token != "" {
-					_, _ = fmt.Fprintln(os.Stderr, "Warning: --splunk-token is visible in process listings; prefer MCPSEC_SPLUNK_TOKEN env var")
-				}
-				if token == "" {
-					token = os.Getenv("MCPSEC_SPLUNK_TOKEN")
-				}
-				if splunkURL != "" && token != "" {
-					if err := output.ValidateHECURL(splunkURL); err != nil {
-						return err
-					}
-					if err := output.WriteSplunk(findings, version, splunkURL, token, splunkIndex); err != nil {
-						return err
-					}
-					if !quiet {
-						_, _ = fmt.Fprintf(os.Stderr, "Sent %d finding(s) to Splunk HEC\n", len(findings))
-					}
-				} else {
-					if err := output.WriteSplunkToWriter(w, findings, version); err != nil {
-						return err
-					}
-				}
-			default:
-				if !quiet {
-					if err := output.WriteTable(w, findings); err != nil {
-						return err
-					}
-				}
-			}
-
-			if failOn != "" {
-				severityOrder := map[string]int{"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-				threshold := severityOrder[strings.ToLower(failOn)]
-				for _, f := range result.Findings {
-					if sev, ok := severityOrder[strings.ToLower(f.Severity)]; ok && sev <= threshold {
-						return errFindingsThreshold
-					}
-				}
-			}
-
-			return nil
+			return emitFindings(result.Findings, scanEmit)
 		},
 	}
 
-	scanCmd.Flags().StringVarP(&formatFlag, "format", "f", "table", "Output format: table, json, splunk")
-	scanCmd.Flags().StringVarP(&outputFlag, "output", "o", "", "Output file path (default: stdout)")
-	scanCmd.Flags().StringVar(&rulesDir, "rules", "", "Custom rules directory")
+	bindEmitFlags(scanCmd, &scanEmit)
+	scanCmd.Flags().StringVar(&rulesDir, "rules", "", "Custom rules directory; replaces the embedded rules")
 	scanCmd.Flags().StringVar(&severityFlag, "severity", "", "Filter by severity (comma-separated: critical,high,medium,low,info)")
-	scanCmd.Flags().StringVar(&splunkURL, "splunk-url", "", "Splunk HEC endpoint URL")
-	scanCmd.Flags().StringVar(&splunkToken, "splunk-token", "", "Splunk HEC token")
-	scanCmd.Flags().StringVar(&splunkIndex, "splunk-index", "", "Splunk index name")
-	scanCmd.Flags().StringVar(&failOn, "fail-on", "", "Exit with code 1 if findings at or above this severity")
-	scanCmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress output except findings")
+	scanCmd.Flags().StringVar(&ignoreFlag, "ignore", "", "Comma-separated rule IDs to suppress")
 	scanCmd.Flags().StringVar(&inputFormat, "input-format", "auto", "Input format: auto, mcpservers, dxt, dxtdir")
-	scanCmd.Flags().StringVar(&summaryOutput, "summary-output", "", "Write a JSON scan summary to this file")
 	scanCmd.Flags().StringVar(&baselinePath, "baseline", "", "Compare configuration with an approved baseline")
+	scanCmd.Flags().StringVar(&approvedServers, "approved", "", "Comma-separated approved server names; flag all others as shadow MCP")
 
 	baselineCmd := &cobra.Command{Use: "baseline", Short: "Create approved configuration fingerprints"}
 	var baselineOutput string
@@ -230,36 +111,101 @@ func main() {
 			if baselineOutput == "" {
 				return fmt.Errorf("--output is required")
 			}
-			return scanner.New().CreateBaseline(args[0], baselineOutput)
+			cfg, err := config.LoadDefault(configPath)
+			if err != nil {
+				return err
+			}
+			s := scanner.New()
+			s.BaselineKey = baselineKey(cfg)
+			return s.CreateBaseline(args[0], baselineOutput)
 		},
 	}
 	baselineCreateCmd.Flags().StringVarP(&baselineOutput, "output", "o", "", "Baseline output file")
 	baselineCmd.AddCommand(baselineCreateCmd)
 
-	var approvedServers string
+	var discoverEmit emitOptions
 	discoverCmd := &cobra.Command{
 		Use: "discover [path...]", Short: "Inventory MCP servers across client configurations", Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			found, err := scanner.New().Discover(args)
+			cfg, err := config.LoadDefault(configPath)
+			if err != nil {
+				return err
+			}
+			applyPolicy(cmd, cfg, policyFields{
+				format: &discoverEmit.format, output: &discoverEmit.output, severity: &severityFlag, failOn: &discoverEmit.failOn,
+				rules: &rulesDir, splunkURL: &discoverEmit.splunkURL, splunkToken: &discoverEmit.splunkToken, splunkIndex: &discoverEmit.splunkIndex,
+				approved: &approvedServers, ignore: &ignoreFlag,
+			})
+			if err := validateEmit(discoverEmit, severityFlag, ""); err != nil {
+				return err
+			}
+			s, err := prepareScanner(rulesDir, severityFlag, ignoreFlag, "", approvedServers, nil)
+			if err != nil {
+				return err
+			}
+			found, err := s.Discover(args)
 			if err != nil {
 				return err
 			}
 			if approvedServers != "" {
-				return output.WriteTable(os.Stdout, findingInputs(scanner.ShadowFindings(found, strings.Split(approvedServers, ","))))
+				findings := scanner.ShadowFindings(found, splitList(approvedServers))
+				filtered := make([]scanner.Finding, 0, len(findings))
+				for _, finding := range findings {
+					if s.Allows(finding) {
+						filtered = append(filtered, finding)
+					}
+				}
+				return emitFindings(filtered, discoverEmit)
 			}
 			enc := json.NewEncoder(os.Stdout)
+			var outFile *os.File
+			if discoverEmit.output != "" {
+				created, createErr := os.Create(filepath.Clean(discoverEmit.output))
+				if createErr != nil {
+					return createErr
+				}
+				outFile = created
+				enc = json.NewEncoder(outFile)
+			}
 			enc.SetIndent("", "  ")
-			return enc.Encode(found)
+			encodeErr := enc.Encode(found)
+			if outFile == nil {
+				return encodeErr
+			}
+			closeErr := outFile.Close()
+			if encodeErr != nil {
+				return encodeErr
+			}
+			return closeErr
 		},
 	}
+	bindEmitFlags(discoverCmd, &discoverEmit)
 	discoverCmd.Flags().StringVar(&approvedServers, "approved", "", "Comma-separated approved server names; flag all others as shadow MCP")
+	discoverCmd.Flags().StringVar(&severityFlag, "severity", "", "Filter shadow findings by severity")
+	discoverCmd.Flags().StringVar(&ignoreFlag, "ignore", "", "Comma-separated rule IDs to suppress")
 
+	var activeEmit emitOptions
 	var activeAllowPrivate bool
 	var activeTokenEnv string
 	activeCmd := &cobra.Command{
 		Use: "active [MCP-URL]", Short: "Safely enumerate and scan a remote MCP server", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := scanner.New()
+			cfg, err := config.LoadDefault(configPath)
+			if err != nil {
+				return err
+			}
+			applyPolicy(cmd, cfg, policyFields{
+				format: &activeEmit.format, output: &activeEmit.output, severity: &severityFlag, failOn: &activeEmit.failOn,
+				rules: &rulesDir, splunkURL: &activeEmit.splunkURL, splunkToken: &activeEmit.splunkToken, splunkIndex: &activeEmit.splunkIndex,
+				ignore: &ignoreFlag,
+			})
+			if err := validateEmit(activeEmit, severityFlag, ""); err != nil {
+				return err
+			}
+			s, err := prepareScanner(rulesDir, severityFlag, ignoreFlag, "", "", nil)
+			if err != nil {
+				return err
+			}
 			if activeTokenEnv != "" {
 				s.ActiveToken = os.Getenv(activeTokenEnv)
 			}
@@ -267,22 +213,45 @@ func main() {
 			if err != nil {
 				return err
 			}
-			return output.WriteTable(os.Stdout, findingInputs(result.Findings))
+			return emitFindings(result.Findings, activeEmit)
 		},
 	}
+	bindEmitFlags(activeCmd, &activeEmit)
 	activeCmd.Flags().BoolVar(&activeAllowPrivate, "allow-private", false, "Allow explicitly authorized private/local and HTTP endpoints")
 	activeCmd.Flags().StringVar(&activeTokenEnv, "token-env", "MCPSEC_ACTIVE_TOKEN", "Environment variable containing a bearer token")
+	activeCmd.Flags().StringVar(&severityFlag, "severity", "", "Filter by severity (comma-separated: critical,high,medium,low,info)")
+	activeCmd.Flags().StringVar(&ignoreFlag, "ignore", "", "Comma-separated rule IDs to suppress")
+	activeCmd.Flags().StringVar(&rulesDir, "rules", "", "Custom rules directory; replaces the embedded rules")
 
+	var sourceEmit emitOptions
 	sourceCmd := &cobra.Command{
 		Use: "source [directory]", Short: "Scan MCP server source code without executing it", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := scanner.New().ScanSource(args[0])
+			cfg, err := config.LoadDefault(configPath)
 			if err != nil {
 				return err
 			}
-			return output.WriteTable(os.Stdout, findingInputs(result.Findings))
+			applyPolicy(cmd, cfg, policyFields{
+				format: &sourceEmit.format, output: &sourceEmit.output, severity: &severityFlag, failOn: &sourceEmit.failOn,
+				ignore: &ignoreFlag,
+			})
+			if err := validateEmit(sourceEmit, severityFlag, ""); err != nil {
+				return err
+			}
+			s, err := prepareScanner("", severityFlag, ignoreFlag, "", "", nil)
+			if err != nil {
+				return err
+			}
+			result, err := s.ScanSource(args[0])
+			if err != nil {
+				return err
+			}
+			return emitFindings(result.Findings, sourceEmit)
 		},
 	}
+	bindEmitFlags(sourceCmd, &sourceEmit)
+	sourceCmd.Flags().StringVar(&severityFlag, "severity", "", "Filter by severity (comma-separated: critical,high,medium,low,info)")
+	sourceCmd.Flags().StringVar(&ignoreFlag, "ignore", "", "Comma-separated rule IDs to suppress")
 
 	// rules command
 	rulesCmd := &cobra.Command{
@@ -294,11 +263,13 @@ func main() {
 		Use:   "list",
 		Short: "List all loaded rules",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir := rulesDir
-			if dir == "" {
-				dir = "rules"
+			var loaded []*rules.Rule
+			var err error
+			if rulesDir == "" {
+				loaded, err = rules.LoadFS(bundled.Files)
+			} else {
+				loaded, err = rules.LoadDirectory(rulesDir)
 			}
-			loaded, err := rules.LoadDirectory(dir)
 			if err != nil {
 				return err
 			}
@@ -360,7 +331,7 @@ func main() {
 func findingInputs(findings []scanner.Finding) []output.FindingInput {
 	result := make([]output.FindingInput, len(findings))
 	for i, f := range findings {
-		result[i] = output.FindingInput{RuleID: f.RuleID, Name: f.Name, Severity: f.Severity, Description: f.Description, Remediation: f.Remediation, Resource: f.Resource, OWASPMCP: f.OWASPMCP}
+		result[i] = output.FindingInput{RuleID: f.RuleID, Name: f.Name, Severity: f.Severity, Description: f.Description, Remediation: f.Remediation, Resource: f.Resource, OWASPMCP: f.OWASPMCP, Location: f.Location, Line: f.Line}
 	}
 	return result
 }

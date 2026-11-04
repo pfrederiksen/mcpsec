@@ -70,7 +70,7 @@ If no `--splunk-url` is provided, HEC-formatted events are written to stdout or 
 mcpsec scan --format splunk -o events.json mcp-config.json
 ```
 
-Each event is a self-contained Splunk HEC JSON object. The OCSF payload is nested in `event`, and HEC indexes that object as `_raw`. Findings include `unmapped.owasp_mcp` so searches can group by OWASP MCP Top 10:2025 beta category without parsing rule IDs. The HEC sourcetype is `mcpsec:finding`.
+Each event is a self-contained Splunk HEC JSON object. The OCSF payload is nested in `event`, and HEC indexes that object as `_raw`. Findings include `type_uid` 200101 and `unmapped.owasp_mcp` so searches can group by OWASP MCP Top 10:2025 beta category without parsing rule IDs. The HEC sourcetype is `mcpsec:finding`. CI rejects an encoder change that drops a field the dashboard reads with `spath`.
 
 ## Installing the Splunk App
 

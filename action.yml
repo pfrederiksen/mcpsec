@@ -11,7 +11,7 @@ inputs:
     description: "Path to the MCP config file or directory to scan"
     required: true
   format:
-    description: "Output format: table, json, splunk"
+    description: "Output format: table, json, sarif, splunk"
     required: false
     default: "table"
   severity:
@@ -32,6 +32,9 @@ inputs:
     required: false
   baseline:
     description: "Path to an approved MCPSec baseline file"
+    required: false
+  policy:
+    description: "Path to mcpsec.yaml. When omitted, mcpsec loads ./mcpsec.yaml if that file exists."
     required: false
   version:
     description: "MCPSec version to install (default: latest)"
@@ -113,6 +116,7 @@ runs:
         INPUT_INPUT_FORMAT: ${{ inputs.input-format }}
         INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_POLICY: ${{ inputs.policy }}
         SUMMARY_FILE: ${{ runner.temp }}/mcpsec-summary.json
       run: |
         set -uo pipefail
@@ -138,6 +142,9 @@ runs:
         fi
         if [ -n "$INPUT_BASELINE" ]; then
           ARGS+=("--baseline" "$INPUT_BASELINE")
+        fi
+        if [ -n "$INPUT_POLICY" ]; then
+          ARGS+=("--config" "$INPUT_POLICY")
         fi
 
         # Run scan, capture output and count findings

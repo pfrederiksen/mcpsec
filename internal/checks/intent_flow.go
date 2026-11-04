@@ -6,14 +6,15 @@ import "strings"
 type IntentFlowCheck struct{}
 
 var intentSubversionPatterns = []string{
-	"without confirmation", "without asking", "do not ask", "silently",
+	"without confirmation", "without asking", "do not ask",
 	"automatically approve", "bypass approval", "ignore user intent",
-	"always call", "must call this tool", "invoke another tool",
+	"must call this tool", "always call this tool",
+	"act silently", "run silently", "silently execute",
 }
 
 func (c *IntentFlowCheck) Run(ctx CheckContext) []CheckFinding {
 	var findings []CheckFinding
-	for _, tool := range ctx.Server.Tools {
+	for _, tool := range ctx.Server.Described() {
 		description := strings.ToLower(tool.Description)
 		for _, pattern := range intentSubversionPatterns {
 			if strings.Contains(description, pattern) {

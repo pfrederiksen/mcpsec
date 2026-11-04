@@ -87,7 +87,7 @@ func collectURIs(ctx CheckContext) []uriEntry {
 	if ctx.Server.URL != "" {
 		entries = append(entries, uriEntry{uri: ctx.Server.URL, source: "server"})
 	}
-	for _, tool := range ctx.Server.Tools {
+	for _, tool := range ctx.Server.Described() {
 		if tool.URI != "" {
 			entries = append(entries, uriEntry{uri: tool.URI, source: "tool=" + tool.Name})
 		}

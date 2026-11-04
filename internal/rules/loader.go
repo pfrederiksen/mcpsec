@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,6 +47,10 @@ func LoadFile(path string) (*Rule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading rule file %s: %w", path, err)
 	}
+	return parseRule(path, data)
+}
+
+func parseRule(path string, data []byte) (*Rule, error) {
 	var rule Rule
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -72,6 +77,46 @@ func LoadFile(path string) (*Rule, error) {
 		return nil, fmt.Errorf("rule file %s: %s", path, strings.Join(validationErrors, "; "))
 	}
 	return &rule, nil
+}
+
+// LoadFS loads every YAML rule from an fs.FS, including rules embedded in the binary.
+func LoadFS(fsys fs.FS) ([]*Rule, error) {
+	var loaded []*Rule
+	seenIDs := make(map[string]string)
+	err := fs.WalkDir(fsys, ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		ext := filepath.Ext(path)
+		if ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+		data, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		if len(data) > 1<<20 {
+			return fmt.Errorf("rule file %s exceeds 1 MiB limit", path)
+		}
+		rule, err := parseRule(path, data)
+		if err != nil {
+			return err
+		}
+		if previous, exists := seenIDs[rule.ID]; exists {
+			return fmt.Errorf("duplicate rule ID %s in %s and %s", rule.ID, previous, path)
+		}
+		seenIDs[rule.ID] = path
+		loaded = append(loaded, rule)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(loaded, func(i, j int) bool { return loaded[i].ID < loaded[j].ID })
+	return loaded, nil
 }
 
 // LoadDirectory loads all .yaml and .yml files from a directory.

@@ -9,7 +9,7 @@ references:
   - https://owasp.org/www-project-mcp-top-10/
 match:
   path: "$.mcpServers.*.tools[*].description"
-  pattern: "without (asking|confirmation)|do not ask|silently|bypass approval|always call|must call this tool"
+  pattern: "without (asking|confirmation)|do not ask|automatically approve|bypass approval|ignore user intent|must call this tool|always call this tool|act silently|run silently|silently execute"
   type: regex
 remediation: |
   Remove orchestration and approval-bypass instructions from tool metadata.
