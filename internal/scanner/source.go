@@ -15,10 +15,10 @@ type sourcePattern struct {
 }
 
 var sourcePatterns = []sourcePattern{
-	{"MCP05-301", "Possible command injection sink", "high", "MCP05", "Untrusted values may reach a shell or process execution API.", "Use direct process execution with fixed arguments and validate inputs.", regexp.MustCompile(`(?i)(exec|system|popen|spawn|command)\s*\([^\n]*(args|input|params|request)`)},
-	{"MCP05-302", "Possible path traversal sink", "high", "MCP05", "A request-derived value may be used in a filesystem operation.", "Resolve against an allowlisted root and reject paths that escape it.", regexp.MustCompile(`(?i)(open|readfile|writefile|read_file|write_file)\s*\([^\n]*(args|input|params|request)`)},
-	{"MCP05-303", "Possible SSRF sink", "high", "MCP05", "A request-derived URL may be passed to an outbound HTTP client.", "Allowlist schemes and destinations; block private/reserved ranges at connection time.", regexp.MustCompile(`(?i)(fetch|requests\.(get|post)|http\.(get|post)|client\.do)\s*\([^\n]*(args|input|params|request|url)`)},
-	{"MCP07-301", "Possible access-token passthrough", "critical", "MCP07", "An inbound Authorization value may be forwarded to an upstream request.", "Exchange for a separately audience-bound upstream token; never pass through the MCP token.", regexp.MustCompile(`(?i)(authorization|access[_-]?token)[^\n]{0,120}(forward|upstream|setheader|headers?\[)`)},
+	{"MCP05-301", "Possible command injection sink", "high", "MCP05", "Untrusted values may reach a shell or process execution API.", "Use direct process execution with fixed arguments and validate inputs.", regexp.MustCompile(`(?i)(\bos\.system|\bsubprocess\.|\bexec\.Command|\bchild_process|\bpopen|\bspawn)\s*\([^\n]*(\bparams\b|\bargs\b|\binput\b|\brequest\b)`)},
+	{"MCP05-302", "Possible path traversal sink", "high", "MCP05", "A request-derived value may be used in a filesystem operation.", "Resolve against an allowlisted root and reject paths that escape it.", regexp.MustCompile(`(?i)(\bopen|\breadfile|\bwritefile|\bread_file|\bwrite_file)\s*\([^\n]*(\bparams\b|\bargs\b|\binput\b|\brequest\b)`)},
+	{"MCP05-303", "Possible SSRF sink", "high", "MCP05", "A request-derived URL may be passed to an outbound HTTP client.", "Allowlist schemes and destinations; block private/reserved ranges at connection time.", regexp.MustCompile(`(?i)(\bfetch|\brequests\.(get|post)|\bhttp\.(get|post)|\bclient\.do)\s*\([^\n]*(\bparams\b|\bargs\b|\binput\b|\brequest\b)`)},
+	{"MCP07-301", "Possible access-token passthrough", "critical", "MCP07", "An inbound Authorization value may be forwarded to an upstream request.", "Exchange for a separately audience-bound upstream token; never pass through the MCP token.", regexp.MustCompile(`(?i)(authorization|access[_-]?token)[^\n]{0,80}(setheader|headers\[|forward)`)},
 }
 
 var sourceExtensions = map[string]bool{".go": true, ".py": true, ".js": true, ".ts": true, ".tsx": true, ".java": true, ".rs": true}
@@ -55,12 +55,13 @@ func (s *Scanner) ScanSource(root string) (*ScanResult, error) {
 		for scan.Scan() {
 			lineNo++
 			line := scan.Text()
-			if strings.Contains(line, "regexp.MustCompile(") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "*") || strings.Contains(line, "regexp.MustCompile(") {
 				continue
 			}
 			for _, pattern := range sourcePatterns {
-				if pattern.re.MatchString(line) && s.severityAllowed(pattern.severity) {
-					result.Findings = append(result.Findings, Finding{RuleID: pattern.id, Name: pattern.name, Severity: pattern.severity, OWASPMCP: pattern.owasp, Description: pattern.description, Remediation: pattern.remediation, Resource: fmt.Sprintf("source:%s:%d", path, lineNo), Match: "lexical pattern"})
+				if pattern.re.MatchString(line) && s.keepRule(pattern.id, pattern.severity) {
+					result.Findings = append(result.Findings, Finding{RuleID: pattern.id, Name: pattern.name, Severity: pattern.severity, OWASPMCP: pattern.owasp, Description: pattern.description + " This is a review candidate, not a proven exploit.", Remediation: pattern.remediation, Resource: fmt.Sprintf("source:%s:%d", path, lineNo), Match: "lexical pattern", Location: path, Line: lineNo})
 				}
 			}
 		}
@@ -74,5 +75,6 @@ func (s *Scanner) ScanSource(root string) (*ScanResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scanning source: %w", err)
 	}
+	result.Findings = dedupeFindings(result.Findings)
 	return result, nil
 }

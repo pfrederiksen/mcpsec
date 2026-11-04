@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,8 +13,9 @@ import (
 const baselineVersion = 1
 
 type Baseline struct {
-	Version int               `json:"version"`
-	Servers map[string]string `json:"servers"`
+	Version   int               `json:"version"`
+	Servers   map[string]string `json:"servers"`
+	Signature string            `json:"signature,omitempty"`
 }
 
 func hashServer(server MCPServer) (string, error) {
@@ -42,6 +44,13 @@ func (s *Scanner) CreateBaseline(configPath, outputPath string) error {
 			return fmt.Errorf("fingerprinting %s: %w", name, err)
 		}
 	}
+	if len(s.BaselineKey) > 0 {
+		signature, signErr := signBaseline(baseline.Version, baseline.Servers, s.BaselineKey)
+		if signErr != nil {
+			return signErr
+		}
+		baseline.Signature = signature
+	}
 	out, err := json.MarshalIndent(baseline, "", "  ")
 	if err != nil {
 		return err
@@ -52,7 +61,7 @@ func (s *Scanner) CreateBaseline(configPath, outputPath string) error {
 	return nil
 }
 
-func compareBaseline(config *MCPServerConfig, path string) ([]Finding, error) {
+func compareBaseline(config *MCPServerConfig, path string, key []byte) ([]Finding, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("reading baseline: %w", err)
@@ -63,6 +72,9 @@ func compareBaseline(config *MCPServerConfig, path string) ([]Finding, error) {
 	}
 	if baseline.Version != baselineVersion {
 		return nil, fmt.Errorf("unsupported baseline version %d", baseline.Version)
+	}
+	if err := verifyBaseline(baseline, key); err != nil {
+		return nil, err
 	}
 	var findings []Finding
 	for name, server := range config.MCPServers {
@@ -84,6 +96,47 @@ func compareBaseline(config *MCPServerConfig, path string) ([]Finding, error) {
 		}
 	}
 	return findings, nil
+}
+
+func signBaseline(version int, servers map[string]string, key []byte) (string, error) {
+	payload, err := canonicalBaseline(version, servers)
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, key)
+	if _, err := mac.Write(payload); err != nil {
+		return "", err
+	}
+	return "hmac-sha256:" + hex.EncodeToString(mac.Sum(nil)), nil
+}
+
+func verifyBaseline(baseline Baseline, key []byte) error {
+	signed := baseline.Signature != ""
+	if !signed && len(key) == 0 {
+		return nil
+	}
+	if signed && len(key) == 0 {
+		return fmt.Errorf("baseline is signed; set MCPSEC_BASELINE_KEY or baseline_key_env")
+	}
+	if !signed {
+		return fmt.Errorf("baseline is not signed")
+	}
+	expected, err := signBaseline(baseline.Version, baseline.Servers, key)
+	if err != nil {
+		return err
+	}
+	if !hmac.Equal([]byte(expected), []byte(baseline.Signature)) {
+		return fmt.Errorf("baseline signature does not verify")
+	}
+	return nil
+}
+
+func canonicalBaseline(version int, servers map[string]string) ([]byte, error) {
+	payload := struct {
+		Version int               `json:"version"`
+		Servers map[string]string `json:"servers"`
+	}{Version: version, Servers: servers}
+	return json.Marshal(payload)
 }
 
 func driftFinding(name, title, description string) Finding {

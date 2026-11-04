@@ -26,12 +26,15 @@ docs/                         -- rules-authoring.md, ocsf-schema.md, splunk-inte
 
 ## Key Patterns
 - Built-in checks implement `Check`: `Run(ctx CheckContext) []CheckFinding`
-- YAML rules are an optional second layer via `--rules`. They are not embedded in the binary
+- YAML rules in `rules/` are embedded in the binary. `--rules` replaces that set
+- A YAML rule is dropped when a built-in check covers the same category, resource, and field
 - Both engines produce findings through the same output pipeline
 - Findings map to OCSF Security Finding (class_uid 2001). The OWASP category is `unmapped.owasp_mcp`
 - Per-tool findings (duplicate tools, missing schemas) are deduplicated into one finding with a count
 - The supplemental rate-limit check is not registered. Its IDs are `SUP-001` and `SUP-002`, not MCP10
-- `scan`, `discover`, `baseline`, and `source` never execute a configured MCP server. `active` sends only initialize and paginated `tools/list`
+- `scan`, `discover`, `baseline`, and `source` never execute a configured MCP server. `active` sends initialize plus paginated `tools/list`, `resources/list`, and `prompts/list`
+- `./mcpsec.yaml` is the policy file. Flags override it. Baselines are HMAC-signed when `MCPSEC_BASELINE_KEY` is set
+- Output formats are table, OCSF JSON, SARIF, and Splunk HEC. `type_uid` is 200101
 
 ## Supported Input Formats
 - **mcpServers JSON** -- `{"mcpServers": {...}}` (Claude Desktop, Cursor, Windsurf) and VS Code `{"servers": {...}}`
@@ -48,6 +51,7 @@ golangci-lint run                        # Lint
 make build / make test / make lint       # Makefile shortcuts
 mcpsec scan <file-or-dir>                # Scan a config
 mcpsec scan --format json <file>         # OCSF JSON output
+mcpsec scan --format sarif <file>        # SARIF 2.1.0 output
 mcpsec scan --severity critical <file>   # Filter by severity
 mcpsec scan --input-format dxt <file>    # Force input format
 mcpsec baseline create <file> -o out.json

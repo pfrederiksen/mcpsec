@@ -14,6 +14,7 @@ MCPSec uses OCSF **Security Finding** (class_uid: `2001`).
 |-------|------|-------------|-------|
 | `class_uid` | integer | OCSF event class | `2001` (Security Finding) |
 | `category_uid` | integer | Event category | `2` (Findings) |
+| `type_uid` | integer | Class and activity | `200101` (`class_uid * 100 + activity_id`) |
 | `activity_id` | integer | Activity type | `1` (Create) |
 | `severity_id` | integer | Severity level (1-5) | See mapping below |
 | `severity` | string | Severity label | `critical`, `high`, `medium`, `low`, `info` |
@@ -66,6 +67,7 @@ Product-specific fields that are not part of the OCSF Security Finding class liv
 {
   "class_uid": 2001,
   "category_uid": 2,
+  "type_uid": 200101,
   "activity_id": 1,
   "severity_id": 5,
   "severity": "critical",

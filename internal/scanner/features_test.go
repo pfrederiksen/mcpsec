@@ -67,17 +67,22 @@ func TestActiveScanOnlyEnumeratesTools(t *testing.T) {
 	defer server.Close()
 	result, err := New().ActiveScan(context.Background(), server.URL, true)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"initialize", "notifications/initialized", "tools/list"}, methods)
+	assert.Equal(t, []string{"initialize", "notifications/initialized", "tools/list", "resources/list", "prompts/list"}, methods)
+	for _, forbidden := range []string{"tools/call", "resources/read", "prompts/get"} {
+		assert.NotContains(t, methods, forbidden)
+	}
 	assert.Contains(t, findingRuleIDs(result.Findings), "MCP07-201")
 }
 
 func TestSourceScan(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "server.py"), []byte("os.system(params.command)\nrequests.get(input.url)\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "server.py"), []byte("os.system(params.command)\nrequests.get(input.url)\nhttp.Get(\"https://example.com\")\nexec.Command(\"git\", \"status\")\n# os.system(params.command)\n"), 0o600))
 	result, err := New().ScanSource(dir)
 	require.NoError(t, err)
 	assert.Contains(t, findingRuleIDs(result.Findings), "MCP05-301")
 	assert.Contains(t, findingRuleIDs(result.Findings), "MCP05-303")
+	assert.Len(t, result.Findings, 2)
+	assert.Equal(t, 1, result.Findings[0].Line)
 }
 
 func findingRuleIDs(findings []Finding) []string {

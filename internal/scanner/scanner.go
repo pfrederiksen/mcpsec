@@ -10,6 +10,7 @@ import (
 
 	"github.com/pfrederiksen/mcpsec/internal/checks"
 	"github.com/pfrederiksen/mcpsec/internal/rules"
+	bundled "github.com/pfrederiksen/mcpsec/rules"
 )
 
 // Finding represents a single security finding from a scan.
@@ -22,6 +23,8 @@ type Finding struct {
 	Remediation string `json:"remediation"`
 	Resource    string `json:"resource"`
 	Match       string `json:"match,omitempty"`
+	Location    string `json:"location,omitempty"`
+	Line        int    `json:"line,omitempty"`
 }
 
 // ScanResult holds all findings from a scan.
@@ -83,6 +86,7 @@ type MCPServer struct {
 	Logging        *LoggingConfig   `json:"logging,omitempty"`
 	RateLimit      *RateLimitConfig `json:"rateLimit,omitempty"`
 	Permissions    []string         `json:"permissions,omitempty"`
+	Definitions    []Tool           `json:"-"`
 }
 
 // Tool represents a tool definition within an MCP server.
@@ -168,12 +172,15 @@ type Scanner struct {
 	Severity     []string
 	InputFormat  InputFormat
 	BaselinePath string
+	BaselineKey  []byte
 	ActiveToken  string
+	Ignore       []string
+	Approved     []string
 }
 
-// New creates a Scanner with all built-in checks registered.
+// New creates a Scanner with all built-in checks and the embedded YAML rules.
 func New() *Scanner {
-	return &Scanner{
+	s := &Scanner{
 		RuleEngine: rules.NewEngine(),
 		Checks: []checks.Check{
 			&checks.PromptInjectionCheck{},
@@ -191,6 +198,12 @@ func New() *Scanner {
 			&checks.AuditLoggingCheck{},
 		},
 	}
+	loaded, err := rules.LoadFS(bundled.Files)
+	if err != nil {
+		panic("embedded rules: " + err.Error())
+	}
+	s.RuleEngine.SetRules(loaded)
+	return s
 }
 
 // LoadRules loads YAML rules from a directory into the rule engine.
@@ -242,16 +255,21 @@ func (s *Scanner) ScanFile(path string) (*ScanResult, error) {
 		return nil, err
 	}
 	if s.BaselinePath != "" {
-		drift, compareErr := compareBaseline(config, s.BaselinePath)
+		drift, compareErr := compareBaseline(config, s.BaselinePath, s.BaselineKey)
 		if compareErr != nil {
 			return nil, compareErr
 		}
 		for _, finding := range drift {
-			if s.severityAllowed(finding.Severity) {
+			if s.keepRule(finding.RuleID, finding.Severity) {
 				result.Findings = append(result.Findings, finding)
 			}
 		}
 	}
+	if len(s.Approved) > 0 {
+		result.Findings = append(result.Findings, s.unapproved(path, serverNames(config))...)
+	}
+	stampLocation(result.Findings, path)
+	result.Findings = dedupeFindings(result.Findings)
 	return result, nil
 }
 
@@ -434,9 +452,13 @@ func (s *Scanner) scanDXTDirectory(dir string) (*ScanResult, error) {
 			_, _ = fmt.Fprintf(os.Stderr, "Warning: error scanning %s: %v\n", entry.Name(), err)
 			continue
 		}
+		stampLocation(sub.Findings, manifestPath)
+		if len(s.Approved) > 0 {
+			sub.Findings = append(sub.Findings, s.unapproved(manifestPath, serverNames(config))...)
+		}
 		result.Findings = append(result.Findings, sub.Findings...)
 	}
-
+	result.Findings = dedupeFindings(result.Findings)
 	return result, nil
 }
 
@@ -462,7 +484,7 @@ func (s *Scanner) scanConfig(config *MCPServerConfig, rawData []byte, target str
 		for _, check := range s.Checks {
 			findings := check.Run(ctx)
 			for _, f := range findings {
-				if s.severityAllowed(f.Severity) {
+				if s.keepRule(f.RuleID, f.Severity) {
 					result.Findings = append(result.Findings, Finding{
 						RuleID:      f.RuleID,
 						Name:        f.Name,
@@ -480,7 +502,7 @@ func (s *Scanner) scanConfig(config *MCPServerConfig, rawData []byte, target str
 		// Also run YAML rule engine checks
 		ruleFindings := s.RuleEngine.Evaluate(serverName, server)
 		for _, f := range ruleFindings {
-			if s.severityAllowed(f.Severity) {
+			if s.keepRule(f.RuleID, f.Severity) {
 				result.Findings = append(result.Findings, Finding{
 					RuleID:      f.RuleID,
 					Name:        f.Name,
@@ -489,13 +511,34 @@ func (s *Scanner) scanConfig(config *MCPServerConfig, rawData []byte, target str
 					Description: f.Description,
 					Remediation: f.Remediation,
 					Resource:    fmt.Sprintf("mcpserver:%s", serverName),
-					Match:       f.Match,
+					Match:       withField(f.Field, f.Match),
 				})
 			}
 		}
 	}
 
 	return result, nil
+}
+
+// Allows reports whether a finding survives the configured severity and ignore filters.
+func (s *Scanner) Allows(f Finding) bool {
+	return s.keep(f)
+}
+
+func (s *Scanner) keep(f Finding) bool {
+	return s.keepRule(f.RuleID, f.Severity)
+}
+
+func (s *Scanner) keepRule(ruleID, severity string) bool {
+	if !s.severityAllowed(severity) {
+		return false
+	}
+	for _, id := range s.Ignore {
+		if strings.EqualFold(strings.TrimSpace(id), ruleID) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Scanner) severityAllowed(sev string) bool {
@@ -540,15 +583,22 @@ func toCheckServer(s MCPServer) checks.ServerConfig {
 		cs.RateLimit = &checks.RateLimitConfig{Enabled: s.RateLimit.Enabled, MaxRPS: s.RateLimit.MaxRPS, MaxPayload: s.RateLimit.MaxPayload}
 	}
 	for _, t := range s.Tools {
-		cs.Tools = append(cs.Tools, checks.ToolConfig{
-			Name:        t.Name,
-			Description: t.Description,
-			InputSchema: t.InputSchema,
-			Environment: map[string]string(t.Environment),
-			URI:         t.URI,
-			Permissions: t.Permissions,
-			Hash:        t.Hash,
-		})
+		cs.Tools = append(cs.Tools, toolConfig(t))
+	}
+	for _, t := range s.Definitions {
+		cs.Definitions = append(cs.Definitions, toolConfig(t))
 	}
 	return cs
+}
+
+func toolConfig(t Tool) checks.ToolConfig {
+	return checks.ToolConfig{
+		Name:        t.Name,
+		Description: t.Description,
+		InputSchema: t.InputSchema,
+		Environment: map[string]string(t.Environment),
+		URI:         t.URI,
+		Permissions: t.Permissions,
+		Hash:        t.Hash,
+	}
 }

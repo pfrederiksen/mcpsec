@@ -167,46 +167,117 @@ func (s *Scanner) ActiveScan(ctx context.Context, endpoint string, allowPrivate 
 	}
 	config := &MCPServerConfig{MCPServers: map[string]MCPServer{parsed.Host: {URL: parsed.String(), Transport: "streamable-http"}}}
 	server := config.MCPServers[parsed.Host]
-	var toolsErr error
-	cursor := ""
-	for page := 0; page < 100; page++ {
-		params := map[string]any{}
-		if cursor != "" {
-			params["cursor"] = cursor
+	nextID := 1
+	toolPages, toolsErr := paginate(call, &nextID, "tools/list")
+	if toolsErr == nil {
+		for _, raw := range toolPages {
+			var listed struct {
+				Tools []Tool `json:"tools"`
+			}
+			if unmarshalErr := json.Unmarshal(raw, &listed); unmarshalErr != nil {
+				return nil, fmt.Errorf("parsing tools/list: %w", unmarshalErr)
+			}
+			server.Tools = append(server.Tools, listed.Tools...)
 		}
-		toolsResult, listErr := call(2+page, "tools/list", params)
-		if listErr != nil {
-			toolsErr = listErr
-			break
+	}
+	resourcePages, resourcesErr := paginate(call, &nextID, "resources/list")
+	if resourcesErr == nil {
+		for _, raw := range resourcePages {
+			var listed struct {
+				Resources []struct {
+					URI         string `json:"uri"`
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"resources"`
+			}
+			if unmarshalErr := json.Unmarshal(raw, &listed); unmarshalErr != nil {
+				resourcesErr = fmt.Errorf("parsing resources/list: %w", unmarshalErr)
+				break
+			}
+			for _, resource := range listed.Resources {
+				name := resource.Name
+				if name == "" {
+					name = resource.URI
+				}
+				server.Definitions = append(server.Definitions, Tool{Name: "resource:" + name, Description: resource.Description, URI: resource.URI})
+			}
 		}
-		var listed struct {
-			Tools      []Tool `json:"tools"`
-			NextCursor string `json:"nextCursor"`
+	} else if methodNotFound(resourcesErr) {
+		resourcesErr = nil
+	}
+	promptPages, promptsErr := paginate(call, &nextID, "prompts/list")
+	if promptsErr == nil {
+		for _, raw := range promptPages {
+			var listed struct {
+				Prompts []struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"prompts"`
+			}
+			if unmarshalErr := json.Unmarshal(raw, &listed); unmarshalErr != nil {
+				promptsErr = fmt.Errorf("parsing prompts/list: %w", unmarshalErr)
+				break
+			}
+			for _, prompt := range listed.Prompts {
+				server.Definitions = append(server.Definitions, Tool{Name: "prompt:" + prompt.Name, Description: prompt.Description})
+			}
 		}
-		if unmarshalErr := json.Unmarshal(toolsResult, &listed); unmarshalErr != nil {
-			return nil, fmt.Errorf("parsing tools/list: %w", unmarshalErr)
-		}
-		server.Tools = append(server.Tools, listed.Tools...)
-		cursor = listed.NextCursor
-		if cursor == "" {
-			break
-		}
-		if page == 99 {
-			return nil, fmt.Errorf("tools/list exceeded 100 pages")
-		}
+	} else if methodNotFound(promptsErr) {
+		promptsErr = nil
 	}
 	config.MCPServers[parsed.Host] = server
 	result, err := s.scanConfig(config, nil, parsed.String())
 	if err != nil {
 		return nil, err
 	}
-	if s.ActiveToken == "" {
-		result.Findings = append(result.Findings, Finding{RuleID: "MCP07-201", Name: "Remote MCP endpoint permits unauthenticated enumeration", Severity: "high", OWASPMCP: "MCP07", Description: "The endpoint completed MCP initialization and tool inventory without credentials. This is factual exposure evidence, but public access may be intentional.", Remediation: "Confirm public enumeration is intended; otherwise require OAuth 2.1 or another strong identity mechanism and enforce per-tool authorization.", Resource: "mcpserver:" + parsed.Host})
+	host := "mcpserver:" + parsed.Host
+	if s.ActiveToken == "" && s.keepRule("MCP07-201", "high") {
+		result.Findings = append(result.Findings, Finding{RuleID: "MCP07-201", Name: "Remote MCP endpoint permits unauthenticated enumeration", Severity: "high", OWASPMCP: "MCP07", Description: "The endpoint completed MCP initialization and catalog inventory without credentials. This is factual exposure evidence, but public access may be intentional.", Remediation: "Confirm public enumeration is intended; otherwise require OAuth 2.1 or another strong identity mechanism and enforce per-tool authorization.", Resource: host, Location: parsed.String(), Line: 1})
 	}
-	if toolsErr != nil {
-		result.Findings = append(result.Findings, Finding{RuleID: "MCP08-201", Name: "Tool inventory unavailable", Severity: "medium", OWASPMCP: "MCP08", Description: toolsErr.Error(), Remediation: "Ensure tools/list is auditable for an authorized security identity.", Resource: "mcpserver:" + parsed.Host})
+	if toolsErr != nil && s.keepRule("MCP08-201", "medium") {
+		result.Findings = append(result.Findings, Finding{RuleID: "MCP08-201", Name: "Tool inventory unavailable", Severity: "medium", OWASPMCP: "MCP08", Description: toolsErr.Error(), Remediation: "Ensure tools/list is auditable for an authorized security identity.", Resource: host, Location: parsed.String(), Line: 1})
 	}
+	if resourcesErr != nil && s.keepRule("MCP08-202", "low") {
+		result.Findings = append(result.Findings, Finding{RuleID: "MCP08-202", Name: "Resource catalog unavailable", Severity: "low", OWASPMCP: "MCP08", Description: resourcesErr.Error(), Remediation: "Ensure resources/list is auditable for an authorized security identity. mcpsec does not call resources/read.", Resource: host, Location: parsed.String(), Line: 1})
+	}
+	if promptsErr != nil && s.keepRule("MCP08-203", "low") {
+		result.Findings = append(result.Findings, Finding{RuleID: "MCP08-203", Name: "Prompt catalog unavailable", Severity: "low", OWASPMCP: "MCP08", Description: promptsErr.Error(), Remediation: "Ensure prompts/list is auditable for an authorized security identity. mcpsec does not call prompts/get.", Resource: host, Location: parsed.String(), Line: 1})
+	}
+	stampLocation(result.Findings, parsed.String())
+	result.Findings = dedupeFindings(result.Findings)
 	return result, nil
+}
+
+func paginate(call func(int, string, any) (json.RawMessage, error), nextID *int, method string) ([]json.RawMessage, error) {
+	var pages []json.RawMessage
+	cursor := ""
+	for page := 0; page < 100; page++ {
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		*nextID++
+		raw, err := call(*nextID, method, params)
+		if err != nil {
+			return pages, err
+		}
+		pages = append(pages, raw)
+		var listed struct {
+			NextCursor string `json:"nextCursor"`
+		}
+		if unmarshalErr := json.Unmarshal(raw, &listed); unmarshalErr != nil {
+			return nil, fmt.Errorf("parsing %s: %w", method, unmarshalErr)
+		}
+		cursor = listed.NextCursor
+		if cursor == "" {
+			return pages, nil
+		}
+	}
+	return nil, fmt.Errorf("%s exceeded 100 pages", method)
+}
+
+func methodNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "JSON-RPC -32601")
 }
 
 func extractSSEData(body []byte) []byte {

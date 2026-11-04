@@ -40,6 +40,7 @@ type ServerConfig struct {
 	EnvFile        string
 	SandboxEnabled *bool
 	Tools          []ToolConfig
+	Definitions    []ToolConfig
 	Auth           *AuthConfig
 	TLS            *TLSConfig
 	Schema         *SchemaConfig
@@ -92,6 +93,19 @@ type RateLimitConfig struct {
 	Enabled    bool
 	MaxRPS     int
 	MaxPayload int
+}
+
+// Described returns tool, resource, and prompt definitions that carry text
+// checks should inspect. Resource and prompt definitions stay out of schema
+// and duplicate-name checks.
+func (s ServerConfig) Described() []ToolConfig {
+	if len(s.Definitions) == 0 {
+		return s.Tools
+	}
+	combined := make([]ToolConfig, 0, len(s.Tools)+len(s.Definitions))
+	combined = append(combined, s.Tools...)
+	combined = append(combined, s.Definitions...)
+	return combined
 }
 
 // IsRemote reports whether the server communicates over a network transport.

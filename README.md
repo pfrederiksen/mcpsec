@@ -7,7 +7,7 @@
 
 Security scanner for Model Context Protocol (MCP) configurations, remote servers, and server source code. Think [Prowler](https://github.com/prowler-cloud/prowler), but purpose-built for MCP and aligned to the [OWASP MCP Top 10:2025 beta](https://owasp.org/www-project-mcp-top-10/).
 
-MCPSec performs evidence-based static config checks, approved-baseline drift detection, multi-client inventory and shadow-server policy checks, read-only remote MCP enumeration, and conservative lexical source analysis. It outputs findings in OCSF JSON or human-readable tables and supports a pluggable YAML rules engine.
+MCPSec performs evidence-based static config checks, approved-baseline drift detection, multi-client inventory and shadow-server policy checks, read-only remote MCP enumeration, and conservative lexical source analysis. It outputs findings as a table, OCSF JSON, SARIF, or Splunk HEC. The default YAML rules are compiled into the binary.
 
 MCPSec never executes a configured MCP server during `scan`, `discover`, `baseline`, or `source`. The opt-in `active` command sends only MCP initialization lifecycle messages and paginated tool-inventory requests; it never invokes tools or reads resources.
 
@@ -80,8 +80,9 @@ mcpsec scan ~/Library/Application\ Support/Claude/Claude\ Extensions/
 # Scan a single DXT extension manifest
 mcpsec scan ~/Library/Application\ Support/Claude/Claude\ Extensions/my-ext/manifest.json
 
-# Output as OCSF JSON
+# Output as OCSF JSON or SARIF
 mcpsec scan --format json mcp-config.json
+mcpsec scan --format sarif mcp-config.json
 
 # Only show critical and high findings
 mcpsec scan --severity critical,high mcp-config.json
@@ -97,7 +98,7 @@ mcpsec scan --baseline mcpsec-baseline.json mcp-config.json
 mcpsec discover
 mcpsec discover --approved github,postgres
 
-# Read-only remote enumeration (HTTPS and public addresses by default)
+# Read-only remote enumeration of tools, resources, and prompts
 MCPSEC_ACTIVE_TOKEN='...' mcpsec active https://mcp.example.com/mcp
 
 # Conservative lexical source scan; review results manually
@@ -143,6 +144,7 @@ Each finding maps to an OCSF Security Finding (class_uid 2001):
 {
   "class_uid": 2001,
   "category_uid": 2,
+  "type_uid": 200101,
   "activity_id": 1,
   "severity_id": 4,
   "severity": "high",
@@ -217,14 +219,17 @@ Primary scan command. Accepts a config file path or directory.
 
 ```
 Flags:
-  -f, --format string         Output format: table, json, splunk (default "table")
+  -f, --format string         Output format: table, json, sarif, splunk (default "table")
   -o, --output string         Output file path (default: stdout)
-      --rules string          Custom rules directory
+      --rules string          Custom rules directory; replaces the embedded rules
       --severity string       Filter by severity (comma-separated: critical,high,medium,low,info)
       --input-format string   Input format: auto, mcpservers, dxt, dxtdir (default "auto")
       --summary-output string Write a JSON scan summary to this file
       --baseline string       Compare with an approved baseline
       --fail-on string        Exit with code 1 if findings at or above this severity
+      --ignore string         Comma-separated rule IDs to suppress
+      --approved string       Comma-separated approved server names
+      --config string         Policy file (default: ./mcpsec.yaml when present)
       --splunk-url string     Splunk HEC endpoint URL
       --splunk-token string   Splunk HEC token (also reads MCPSEC_SPLUNK_TOKEN env var)
       --splunk-index string   Splunk index name
@@ -235,15 +240,17 @@ Flags:
 
 Writes SHA-256 fingerprints of normalized server definitions. Later, `scan --baseline` reports added, removed, or modified servers. Baselines can contain hashes of secret-bearing definitions, but not the secret values themselves.
 
+Set `MCPSEC_BASELINE_KEY` (or the environment variable named by `baseline_key_env` in `mcpsec.yaml`) to HMAC-sign the file. `scan --baseline` rejects a signed file when the key is missing or wrong, and rejects an unsigned file when a key is set. The key is read from the environment, not from the command line.
+
 ### `mcpsec discover [path...]`
 
-Inventories MCP configs. With no paths, checks established per-user Claude Desktop, Cursor, VS Code, and Windsurf locations. Directory arguments are searched while `.git` and `node_modules` are skipped.
+Inventories MCP configs. With no paths, checks per-user Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Copilot, Gemini CLI, and Zed locations, plus project files `.cursor/mcp.json`, `.vscode/mcp.json`, `.mcp.json`, `.claude/mcp.json`, `.gemini/settings.json`, and `.zed/settings.json`. Directory arguments are searched while `.git` and `node_modules` are skipped.
 
-Use `--approved name1,name2` to report every other discovered server as OWASP MCP09 shadow MCP. Approval is an explicit policy; discovery alone does not assume that an installed server is unauthorized.
+Use `--approved name1,name2` to report every other discovered server as OWASP MCP09 shadow MCP. With `--approved`, `discover` uses the same `--format`, `--output`, `--severity`, `--fail-on`, and `--summary-output` flags as `scan`. Without it, discovery prints inventory JSON. Approval is an explicit policy; discovery alone does not assume that an installed server is unauthorized.
 
 ### `mcpsec active [MCP-URL]`
 
-Sends `initialize`, `notifications/initialized`, and paginated `tools/list`, then applies tool-definition checks. It does not call tools, read resources, render prompts, request model sampling, or accept elicitation. HTTPS and public addresses are required by default; `--allow-private` explicitly permits private/local and HTTP development endpoints. Set a bearer token in `MCPSEC_ACTIVE_TOKEN`, or name another variable with `--token-env`; tokens are never accepted as command-line values.
+Sends `initialize`, `notifications/initialized`, and paginated `tools/list`, `resources/list`, and `prompts/list`, then applies description, schema, and URI checks. It does not call tools, read resource bodies, render prompts, request model sampling, or accept elicitation. A server that does not implement `resources/list` or `prompts/list` is not a finding. HTTPS and public addresses are required by default; `--allow-private` explicitly permits private/local and HTTP development endpoints. Set a bearer token in `MCPSEC_ACTIVE_TOKEN`, or name another variable with `--token-env`; tokens are never accepted as command-line values. `active` and `source` accept the same output flags as `scan`, including `--format sarif`.
 
 ### `mcpsec source [directory]`
 
@@ -358,7 +365,7 @@ jobs:
     # Required: path to MCP config file or directory
     config: path/to/mcp-config.json
 
-    # Output format: table, json, splunk (default: table)
+    # Output format: table, json, sarif, splunk (default: table)
     format: json
 
     # Filter by severity (comma-separated)
@@ -378,6 +385,9 @@ jobs:
 
     # Compare with a committed approved baseline
     baseline: mcpsec-baseline.json
+
+    # Policy file. Omit to use ./mcpsec.yaml when it exists.
+    policy: mcpsec.yaml
 
     # MCPSec version to install (default: latest)
     version: latest
@@ -446,10 +456,10 @@ remediation: |
   environment variable references, not literals.
 ```
 
-Rules live in the `rules/` directory. The filename prefix matches `owasp_mcp` (`mcp01-secret-exposure.yaml` is an MCP01 rule). MCP04 supply-chain checks and MCP09 shadow-server checks are built in; the YAML set does not duplicate them. Load a rule directory explicitly with `--rules`; no recompilation is needed:
+The default rules are compiled into the binary and run on every scan. `--rules` replaces that set with a directory of your own; it does not merge. The filename prefix matches `owasp_mcp` (`mcp01-secret-exposure.yaml` is an MCP01 rule). MCP04 supply-chain checks and MCP09 shadow-server checks are built in. When a YAML rule and a built-in check describe the same category, server, and field, MCPSec keeps the built-in rule ID.
 
 ```bash
-mcpsec scan --rules ./rules mcp-config.json
+mcpsec scan --rules ./my-rules mcp-config.json
 ```
 
 Rules are strictly validated when loaded. Unknown fields, duplicate IDs, invalid regexes, unsupported match types, multiple YAML documents, and rule files larger than 1 MiB are rejected.
@@ -483,13 +493,13 @@ MCPSec uses several evidence sources that feed one finding pipeline:
 
 1. **Go checks** (`internal/checks/`) -- Compiled checks that understand parsed MCP configuration structure.
 
-2. **YAML rules** (`rules/`) -- Optional regex/JSONPath rules loaded with `--rules`. Rules execute against one parsed server at a time, preventing matches from being attributed to unrelated servers.
+2. **YAML rules** (`rules/`) -- Regex and JSONPath rules embedded in the binary. `--rules` replaces them. Rules execute against one parsed server at a time, so a match is attributed to that server.
 
 3. **Baseline and discovery** -- Normalized definition fingerprints and explicit approved-name policy.
 
 4. **Active and source scans** -- Read-only protocol inventory and lexical source review. These are separate, opt-in commands.
 
-All scan modes produce the same finding model; `scan` supports table, OCSF JSON, and Splunk output. The newer specialized commands currently emit table or inventory JSON as documented above.
+`scan`, `active`, `source`, and `discover --approved` share the table, OCSF JSON, SARIF, and Splunk formatters. `discover` without `--approved` prints inventory JSON.
 
 ```
                      +------------------+
@@ -517,9 +527,24 @@ All scan modes produce the same finding model; `scan` supports table, OCSF JSON,
 
 ---
 
+## Policy file
+
+`mcpsec scan`, `discover`, `active`, `source`, and `baseline create` read `./mcpsec.yaml` when it exists. `--config` selects another file. Flags override the file. See [mcpsec.yaml.example](mcpsec.yaml.example).
+
+```yaml
+fail_on: high
+format: sarif
+approved:
+  - github
+ignore:
+  - MCP07-001
+baseline: mcpsec-baseline.json
+baseline_key_env: MCPSEC_BASELINE_KEY
+```
+
 ## Roadmap
 
-Checks, YAML rules, table output, OCSF, and the Splunk dashboard share the OWASP MCP Top 10:2025 beta categories. The next changes are shared output flags for `active` and `source`, SARIF for pull requests, embedded default rules, and read-only resource and prompt catalogs. The full list is in [docs/roadmap.md](docs/roadmap.md).
+The 2025 beta vocabulary, shared output flags, SARIF, embedded rules, read-only resource and prompt catalogs, project discovery, the policy file, signed baselines, and cross-engine deduplication are in place. [docs/roadmap.md](docs/roadmap.md) records the limits that remain: lexical source review is not proof of exploitability, and a client config still cannot prove a remote server's authorization or audit logging.
 
 ## Contributing
 

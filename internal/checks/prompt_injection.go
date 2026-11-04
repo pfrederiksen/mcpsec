@@ -22,7 +22,7 @@ var promptInjectionPatterns = []string{
 
 func (c *PromptInjectionCheck) Run(ctx CheckContext) []CheckFinding {
 	var findings []CheckFinding
-	for _, tool := range ctx.Server.Tools {
+	for _, tool := range ctx.Server.Described() {
 		desc := strings.ToLower(tool.Description)
 		for _, pattern := range promptInjectionPatterns {
 			if strings.Contains(desc, pattern) {

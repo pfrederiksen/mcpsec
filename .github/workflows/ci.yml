@@ -58,6 +58,8 @@ jobs:
           go-version-file: go.mod
       - name: Run tests
         run: go test ./... -race -coverprofile=coverage.out
+      - name: Check OCSF events against the Splunk dashboard
+        run: go test ./internal/output -race -run TestOCSFEventsMatchDashboardContract
       - name: Upload coverage
         uses: actions/upload-artifact@v7
         with:

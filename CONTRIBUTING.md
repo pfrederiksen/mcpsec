@@ -75,6 +75,7 @@ MCPSec uses YAML-based rules for community-contributed detections. See [docs/rul
 - [ ] Rule YAML follows the schema in `docs/rules-authoring.md`
 - [ ] Rule has a unique ID following the `MCPxx-Rxx` pattern
 - [ ] Rule filename prefix matches `owasp_mcp` (`mcp01-....yaml` for `MCP01`)
+- [ ] A new default rule does not repeat evidence a built-in check already reports
 - [ ] Rule matches `testdata/vulnerable-server.json` (when applicable)
 - [ ] Rule does NOT match `testdata/safe-server.json`
 - [ ] `mcpsec rules validate your-rule.yaml` passes

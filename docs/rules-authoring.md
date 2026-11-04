@@ -1,10 +1,10 @@
 # Rules Authoring Guide
 
-This guide explains how to write YAML-based security rules for MCPSec.
+This guide explains how to write YAML-based security rules for MCPSec. Rules in `rules/` are compiled into the binary. `mcpsec scan --rules ./my-rules` replaces that set for one run.
 
 ## Rule Structure
 
-Each rule is a single YAML file in the `rules/` directory. Filenames follow the pattern `mcpXX-description.yaml`, and `XX` must match the rule's `owasp_mcp` category. For example, an `MCP01` rule is named `mcp01-secret-exposure.yaml`.
+Each rule is a single YAML file. Filenames follow the pattern `mcpXX-description.yaml`, and `XX` must match the rule's `owasp_mcp` category. For example, an `MCP01` rule is named `mcp01-secret-exposure.yaml`. Files in `rules/` are compiled into the binary. `mcpsec scan --rules ./my-rules` replaces that set for one run.
 
 ### Schema
 

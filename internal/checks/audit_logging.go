@@ -21,6 +21,7 @@ func (c *AuditLoggingCheck) Run(ctx CheckContext) []CheckFinding {
 			OWASPMCP:    "MCP08",
 			Description: "Logging is explicitly disabled, preventing detection and investigation of security incidents.",
 			Remediation: "Enable logging and configure appropriate log levels and destinations.",
+			Match:       "logging",
 		})
 	}
 
@@ -32,6 +33,7 @@ func (c *AuditLoggingCheck) Run(ctx CheckContext) []CheckFinding {
 			OWASPMCP:    "MCP08",
 			Description: "Audit logging is not enabled, preventing tracking of who invoked which tools and when.",
 			Remediation: "Enable audit logging to maintain a record of all tool invocations including caller identity, timestamp, and parameters.",
+			Match:       "logging",
 		})
 	}
 

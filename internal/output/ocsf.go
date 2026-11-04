@@ -18,6 +18,7 @@ var severityMap = map[string]int{
 type OCSFEvent struct {
 	ClassUID    int               `json:"class_uid"`
 	CategoryUID int               `json:"category_uid"`
+	TypeUID     int               `json:"type_uid"`
 	ActivityID  int               `json:"activity_id"`
 	SeverityID  int               `json:"severity_id"`
 	Severity    string            `json:"severity"`
@@ -62,6 +63,8 @@ type FindingInput struct {
 	Remediation string
 	Resource    string
 	OWASPMCP    string
+	Location    string
+	Line        int
 }
 
 // WriteOCSF writes findings as OCSF JSON to the given writer.
@@ -82,6 +85,7 @@ func newOCSFEvent(f FindingInput, version string, now int64) OCSFEvent {
 	event := OCSFEvent{
 		ClassUID:    2001,
 		CategoryUID: 2,
+		TypeUID:     200101,
 		ActivityID:  1,
 		SeverityID:  severityMap[f.Severity],
 		Severity:    f.Severity,
