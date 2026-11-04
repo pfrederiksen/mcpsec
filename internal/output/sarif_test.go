@@ -20,15 +20,29 @@ func TestWriteSARIFIncludesRuleAndLine(t *testing.T) {
 	var report map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &report))
 	assert.Equal(t, "2.1.0", report["version"])
-	runs := report["runs"].([]any)
-	run := runs[0].(map[string]any)
-	driver := run["tool"].(map[string]any)["driver"].(map[string]any)
-	rules := driver["rules"].([]any)
-	assert.Equal(t, "MCP05-301", rules[0].(map[string]any)["id"])
-	results := run["results"].([]any)
-	result := results[0].(map[string]any)
+	runs := asSlice(t, report["runs"])
+	run := asMap(t, runs[0])
+	driver := asMap(t, asMap(t, run["tool"])["driver"])
+	rules := asSlice(t, driver["rules"])
+	assert.Equal(t, "MCP05-301", asMap(t, rules[0])["id"])
+	results := asSlice(t, run["results"])
+	result := asMap(t, results[0])
 	assert.Equal(t, "error", result["level"])
-	location := result["locations"].([]any)[0].(map[string]any)["physicalLocation"].(map[string]any)
-	assert.Equal(t, "server.py", location["artifactLocation"].(map[string]any)["uri"])
-	assert.Equal(t, float64(12), location["region"].(map[string]any)["startLine"])
+	location := asMap(t, asMap(t, asSlice(t, result["locations"])[0])["physicalLocation"])
+	assert.Equal(t, "server.py", asMap(t, location["artifactLocation"])["uri"])
+	assert.Equal(t, float64(12), asMap(t, location["region"])["startLine"])
+}
+
+func asMap(t *testing.T, value any) map[string]any {
+	t.Helper()
+	out, ok := value.(map[string]any)
+	require.True(t, ok)
+	return out
+}
+
+func asSlice(t *testing.T, value any) []any {
+	t.Helper()
+	out, ok := value.([]any)
+	require.True(t, ok)
+	return out
 }
