@@ -1,0 +1,11 @@
+owasp_mcp,category
+MCP01,Token Mismanagement and Secret Exposure
+MCP02,Privilege Escalation via Scope Creep
+MCP03,Tool Poisoning
+MCP04,Software Supply Chain Attacks and Dependency Tampering
+MCP05,Command Injection and Execution
+MCP06,Intent Flow Subversion
+MCP07,Insufficient Authentication and Authorization
+MCP08,Lack of Audit and Telemetry
+MCP09,Shadow MCP Servers
+MCP10,Context Injection and Over-Sharing

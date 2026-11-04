@@ -15,10 +15,10 @@ func WriteTable(w io.Writer, findings []FindingInput) error {
 	}
 
 	// Column widths
-	idW, nameW, sevW, resW := 12, 45, 10, 30
+	idW, nameW, sevW, owaspW, resW := 12, 42, 10, 8, 30
 
-	header := fmt.Sprintf("%-*s %-*s %-*s %-*s", idW, "RULE ID", nameW, "NAME", sevW, "SEVERITY", resW, "RESOURCE")
-	separator := strings.Repeat("-", idW+nameW+sevW+resW+3)
+	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s", idW, "RULE ID", nameW, "NAME", sevW, "SEVERITY", owaspW, "OWASP", resW, "RESOURCE")
+	separator := strings.Repeat("-", idW+nameW+sevW+owaspW+resW+4)
 
 	if _, err := fmt.Fprintln(w, separator); err != nil {
 		return err
@@ -40,11 +40,20 @@ func WriteTable(w io.Writer, findings []FindingInput) error {
 		if len(resource) > resW {
 			resource = resource[:resW-3] + "..."
 		}
-		sev := strings.ToUpper(f.Severity)
+		label := strings.ToUpper(f.Severity)
+		pad := sevW - len(label)
+		if pad < 0 {
+			pad = 0
+		}
+		sev := label
 		if shouldColor(w) {
 			sev = colorSeverity(f.Severity)
 		}
-		if _, err := fmt.Fprintf(w, "%-*s %-*s %-*s %-*s\n", idW, id, nameW, name, sevW, sev, resW, resource); err != nil {
+		owasp := f.OWASPMCP
+		if owasp == "" {
+			owasp = "-"
+		}
+		if _, err := fmt.Fprintf(w, "%-*s %-*s %s%s %-*s %-*s\n", idW, id, nameW, name, sev, strings.Repeat(" ", pad), owaspW, owasp, resW, resource); err != nil {
 			return err
 		}
 	}

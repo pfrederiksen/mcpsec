@@ -1,6 +1,6 @@
 <dashboard version="1.1">
   <label>MCP Security Posture</label>
-  <description>OWASP MCP Top 10 security findings from mcpsec scans</description>
+  <description>OWASP MCP Top 10:2025 beta findings from mcpsec scans. Queries expect HEC events with sourcetype mcpsec:finding, where the indexed event is the OCSF object.</description>
 
   <row>
     <panel>
@@ -8,16 +8,8 @@
       <chart>
         <search>
           <query>
-            index=mcpsec sourcetype=_json
-            | spath output=severity_id path=severity_id
-            | eval severity=case(
-                severity_id=1, "Info",
-                severity_id=2, "Low",
-                severity_id=3, "Medium",
-                severity_id=4, "High",
-                severity_id=5, "Critical",
-                true(), "Unknown"
-              )
+            index=mcpsec sourcetype=mcpsec:finding
+            | spath output=severity path=severity
             | stats count by severity
             | sort -count
           </query>
@@ -27,7 +19,7 @@
         <option name="charting.chart">pie</option>
         <option name="charting.chart.showPercent">true</option>
         <option name="charting.drilldown">none</option>
-        <option name="charting.fieldColors">{"Critical": 0xD41F1F, "High": 0xF26A35, "Medium": 0xFBB938, "Low": 0x6DB7C6, "Info": 0x65A637}</option>
+        <option name="charting.fieldColors">{"critical": 0xD41F1F, "high": 0xF26A35, "medium": 0xFBB938, "low": 0x6DB7C6, "info": 0x65A637}</option>
       </chart>
     </panel>
 
@@ -36,19 +28,22 @@
       <chart>
         <search>
           <query>
-            index=mcpsec sourcetype=_json
-            | spath output=rule_id path=finding_info.uid
+            index=mcpsec sourcetype=mcpsec:finding
+            | spath output=rule_id path=finding.uid
+            | spath output=owasp path=unmapped.owasp_mcp
+            | rex field=rule_id "^(?&lt;prefix&gt;MCP\d{2})"
+            | eval owasp=coalesce(owasp, prefix)
             | eval category=case(
-                rule_id="MCP-01", "Tool Poisoning",
-                rule_id="MCP-02", "Excessive Permissions",
-                rule_id="MCP-03", "Tool Shadowing",
-                rule_id="MCP-04", "Rug Pull Attacks",
-                rule_id="MCP-05", "Auth Bypass",
-                rule_id="MCP-06", "Implicit Trust",
-                rule_id="MCP-07", "Config Injection",
-                rule_id="MCP-08", "Insecure Storage",
-                rule_id="MCP-09", "Insufficient Logging",
-                rule_id="MCP-10", "Resource Exhaustion",
+                owasp="MCP01", "MCP01 Token Mismanagement",
+                owasp="MCP02", "MCP02 Scope Creep",
+                owasp="MCP03", "MCP03 Tool Poisoning",
+                owasp="MCP04", "MCP04 Supply Chain",
+                owasp="MCP05", "MCP05 Command Injection",
+                owasp="MCP06", "MCP06 Intent Flow",
+                owasp="MCP07", "MCP07 Authentication",
+                owasp="MCP08", "MCP08 Audit and Telemetry",
+                owasp="MCP09", "MCP09 Shadow MCP",
+                owasp="MCP10", "MCP10 Context Over-Sharing",
                 true(), "Other"
               )
             | stats count by category
@@ -70,8 +65,8 @@
       <chart>
         <search>
           <query>
-            index=mcpsec sourcetype=_json
-            | spath output=server_name path=resource.name
+            index=mcpsec sourcetype=mcpsec:finding
+            | spath output=server_name path=resources{}.name
             | stats count by server_name
             | sort -count
             | head 10
@@ -93,21 +88,14 @@
       <table>
         <search>
           <query>
-            index=mcpsec sourcetype=_json
-            | spath output=rule_id path=finding_info.uid
-            | spath output=title path=finding_info.title
-            | spath output=description path=finding_info.desc
-            | spath output=severity_id path=severity_id
-            | spath output=server_name path=resource.name
-            | eval severity=case(
-                severity_id=1, "Info",
-                severity_id=2, "Low",
-                severity_id=3, "Medium",
-                severity_id=4, "High",
-                severity_id=5, "Critical",
-                true(), "Unknown"
-              )
-            | table _time, rule_id, title, severity, server_name, description
+            index=mcpsec sourcetype=mcpsec:finding
+            | spath output=rule_id path=finding.uid
+            | spath output=title path=finding.title
+            | spath output=description path=finding.desc
+            | spath output=severity path=severity
+            | spath output=owasp path=unmapped.owasp_mcp
+            | spath output=server_name path=resources{}.name
+            | table _time, rule_id, owasp, title, severity, server_name, description
             | sort -_time
             | head 50
           </query>
@@ -119,7 +107,7 @@
         <option name="dataOverlayMode">none</option>
         <option name="wrap">true</option>
         <format type="color" field="severity">
-          <colorPalette type="map">{"Critical": #D41F1F, "High": #F26A35, "Medium": #FBB938, "Low": #6DB7C6, "Info": #65A637}</colorPalette>
+          <colorPalette type="map">{"critical": #D41F1F, "high": #F26A35, "medium": #FBB938, "low": #6DB7C6, "info": #65A637}</colorPalette>
         </format>
       </table>
     </panel>

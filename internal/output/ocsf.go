@@ -16,15 +16,16 @@ var severityMap = map[string]int{
 
 // OCSFEvent represents an OCSF Security Finding (class_uid 2001).
 type OCSFEvent struct {
-	ClassUID    int            `json:"class_uid"`
-	CategoryUID int           `json:"category_uid"`
-	ActivityID  int            `json:"activity_id"`
-	SeverityID  int            `json:"severity_id"`
-	Severity    string         `json:"severity"`
-	Time        int64          `json:"time"`
-	Finding     OCSFFinding    `json:"finding"`
-	Resources   []OCSFResource `json:"resources"`
-	Metadata    OCSFMetadata   `json:"metadata"`
+	ClassUID    int               `json:"class_uid"`
+	CategoryUID int               `json:"category_uid"`
+	ActivityID  int               `json:"activity_id"`
+	SeverityID  int               `json:"severity_id"`
+	Severity    string            `json:"severity"`
+	Time        int64             `json:"time"`
+	Finding     OCSFFinding       `json:"finding"`
+	Resources   []OCSFResource    `json:"resources"`
+	Metadata    OCSFMetadata      `json:"metadata"`
+	Unmapped    map[string]string `json:"unmapped,omitempty"`
 }
 
 type OCSFFinding struct {
@@ -60,6 +61,7 @@ type FindingInput struct {
 	Description string
 	Remediation string
 	Resource    string
+	OWASPMCP    string
 }
 
 // WriteOCSF writes findings as OCSF JSON to the given writer.
@@ -68,32 +70,40 @@ func WriteOCSF(w io.Writer, findings []FindingInput, version string) error {
 	now := time.Now().Unix()
 
 	for _, f := range findings {
-		events = append(events, OCSFEvent{
-			ClassUID:    2001,
-			CategoryUID: 2,
-			ActivityID:  1,
-			SeverityID:  severityMap[f.Severity],
-			Severity:    f.Severity,
-			Time:        now,
-			Finding: OCSFFinding{
-				UID:   f.RuleID,
-				Title: f.Name,
-				Desc:  f.Description,
-				Remediation: OCSFRemediation{
-					Desc: f.Remediation,
-				},
-			},
-			Resources: []OCSFResource{
-				{Type: "MCP Server", Name: f.Resource},
-			},
-			Metadata: OCSFMetadata{
-				Product: OCSFProduct{Name: "MCPSec Audit"},
-				Version: version,
-			},
-		})
+		events = append(events, newOCSFEvent(f, version, now))
 	}
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(events)
+}
+
+func newOCSFEvent(f FindingInput, version string, now int64) OCSFEvent {
+	event := OCSFEvent{
+		ClassUID:    2001,
+		CategoryUID: 2,
+		ActivityID:  1,
+		SeverityID:  severityMap[f.Severity],
+		Severity:    f.Severity,
+		Time:        now,
+		Finding: OCSFFinding{
+			UID:   f.RuleID,
+			Title: f.Name,
+			Desc:  f.Description,
+			Remediation: OCSFRemediation{
+				Desc: f.Remediation,
+			},
+		},
+		Resources: []OCSFResource{
+			{Type: "MCP Server", Name: f.Resource},
+		},
+		Metadata: OCSFMetadata{
+			Product: OCSFProduct{Name: "MCPSec Audit"},
+			Version: version,
+		},
+	}
+	if f.OWASPMCP != "" {
+		event.Unmapped = map[string]string{"owasp_mcp": f.OWASPMCP}
+	}
+	return event
 }

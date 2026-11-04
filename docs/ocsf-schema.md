@@ -52,6 +52,14 @@ MCPSec uses OCSF **Security Finding** (class_uid: `2001`).
 | `metadata.product.name` | string | Scanner name | `"MCPSec Audit"` |
 | `metadata.version` | string | Scanner version | `"1.1.0"` |
 
+### `unmapped` Object
+
+Product-specific fields that are not part of the OCSF Security Finding class live under `unmapped`. The object is omitted when a finding has no category, which applies to supplemental `SUP-` checks.
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `unmapped.owasp_mcp` | string | OWASP MCP Top 10:2025 beta category | `"MCP01"` |
+
 ## Complete Example
 
 ```json
@@ -81,6 +89,9 @@ MCPSec uses OCSF **Security Finding** (class_uid: `2001`).
       "name": "MCPSec Audit"
     },
     "version": "1.1.0"
+  },
+  "unmapped": {
+    "owasp_mcp": "MCP01"
   }
 }
 ```
@@ -96,4 +107,5 @@ mcpsec scan --format json -o findings.json mcp-config.json
 
 # Pipe to jq for filtering
 mcpsec scan --format json mcp-config.json | jq '.[] | select(.severity == "critical")'
+mcpsec scan --format json mcp-config.json | jq '.[] | select(.unmapped.owasp_mcp == "MCP01")'
 ```

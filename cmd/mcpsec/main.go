@@ -124,6 +124,7 @@ func main() {
 					Description: f.Description,
 					Remediation: f.Remediation,
 					Resource:    f.Resource,
+					OWASPMCP:    f.OWASPMCP,
 				}
 			}
 			if summaryOutput != "" {
@@ -359,7 +360,7 @@ func main() {
 func findingInputs(findings []scanner.Finding) []output.FindingInput {
 	result := make([]output.FindingInput, len(findings))
 	for i, f := range findings {
-		result[i] = output.FindingInput{RuleID: f.RuleID, Name: f.Name, Severity: f.Severity, Description: f.Description, Remediation: f.Remediation, Resource: f.Resource}
+		result[i] = output.FindingInput{RuleID: f.RuleID, Name: f.Name, Severity: f.Severity, Description: f.Description, Remediation: f.Remediation, Resource: f.Resource, OWASPMCP: f.OWASPMCP}
 	}
 	return result
 }
