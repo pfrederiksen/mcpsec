@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// UnsafeResourceCheck detects MCP05 — Unsafe Resource Access (SSRF-equivalent).
+// UnsafeResourceCheck detects unsafe URI evidence for OWASP MCP05 — Command Injection & Execution.
 type UnsafeResourceCheck struct{}
 
 var dangerousSchemes = map[string]bool{

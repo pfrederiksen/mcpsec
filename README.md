@@ -111,24 +111,27 @@ mcpsec source ./server
 ### Table (default)
 
 ```
-----------------------------------------------------------------------------------------------------
-RULE ID      NAME                                          SEVERITY   RESOURCE
-----------------------------------------------------------------------------------------------------
-MCP03-101    Potential prompt injection in tool descrip... HIGH       mcpserver:vulnerable-demo
-MCP02-002    Excessive tool permissions                    CRITICAL   mcpserver:vulnerable-demo
-MCP01-101    Plain-text secret in server environment       CRITICAL   mcpserver:vulnerable-demo
-MCP01-102    Plain-text secret in tool environment         CRITICAL   mcpserver:vulnerable-demo
-MCP05-001    Dangerous URI scheme in tool configuration    HIGH       mcpserver:vulnerable-demo
-MCP05-002    Tool URI targets internal network             HIGH       mcpserver:vulnerable-demo
-MCP03-201    Duplicate tool name detected                  HIGH       mcpserver:vulnerable-demo
-MCP06-101    Tool attempts to subvert user intent or ap... HIGH       mcpserver:vulnerable-demo
-MCP07-001    Insecure HTTP transport                       HIGH       mcpserver:vulnerable-demo
-MCP07-003    Weak TLS version configured                   HIGH       mcpserver:vulnerable-demo
-MCP03-301    Missing input schema for tool                 MEDIUM     mcpserver:vulnerable-demo
-MCP04-101    Unpinned package executed as MCP server       HIGH       mcpserver:mutable-local-server
-MCP05-103    Download-and-execute startup chain            CRITICAL   mcpserver:shell-server
-MCP10-101    Broad host context exposed to MCP server      HIGH       mcpserver:mutable-local-server
-----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+RULE ID      NAME                                       SEVERITY   OWASP    RESOURCE
+----------------------------------------------------------------------------------------------------------
+MCP04-101    Unpinned package executed as MCP server    HIGH       MCP04    mcpserver:mutable-local-server
+MCP10-101    Broad host context exposed to MCP server   HIGH       MCP10    mcpserver:mutable-local-server
+MCP05-101    Local MCP server launched through a shell  HIGH       MCP05    mcpserver:shell-server
+MCP05-103    Download-and-execute startup chain         CRITICAL   MCP05    mcpserver:shell-server
+MCP03-101    Potential prompt injection in tool desc... HIGH       MCP03    mcpserver:vulnerable-demo
+MCP06-101    Tool attempts to subvert user intent or... HIGH       MCP06    mcpserver:vulnerable-demo
+MCP02-002    Excessive tool permissions                 CRITICAL   MCP02    mcpserver:vulnerable-demo
+MCP01-101    Plain-text secret in server environment    CRITICAL   MCP01    mcpserver:vulnerable-demo
+MCP01-102    Plain-text secret in tool environment      CRITICAL   MCP01    mcpserver:vulnerable-demo
+MCP05-001    Dangerous URI scheme in tool configuration HIGH       MCP05    mcpserver:vulnerable-demo
+MCP05-002    Tool URI targets internal network          HIGH       MCP05    mcpserver:vulnerable-demo
+MCP03-201    Duplicate tool name detected               HIGH       MCP03    mcpserver:vulnerable-demo
+MCP07-001    Insecure HTTP transport                    HIGH       MCP07    mcpserver:vulnerable-demo
+MCP07-003    Weak TLS version configured                HIGH       MCP07    mcpserver:vulnerable-demo
+MCP03-301    Missing input schema for tool              MEDIUM     MCP03    mcpserver:vulnerable-demo
+MCP08-101    Logging explicitly disabled                HIGH       MCP08    mcpserver:vulnerable-demo
+MCP08-102    Audit logging not enabled                  MEDIUM     MCP08    mcpserver:vulnerable-demo
+----------------------------------------------------------------------------------------------------------
 Total: 17 finding(s)
 ```
 
@@ -163,6 +166,9 @@ Each finding maps to an OCSF Security Finding (class_uid 2001):
       "name": "MCPSec Audit"
     },
     "version": "dev"
+  },
+  "unmapped": {
+    "owasp_mcp": "MCP03"
   }
 }
 ```
@@ -317,7 +323,7 @@ mcpsec rules list
 ### Validate a community rule
 
 ```bash
-mcpsec rules validate rules/mcp04-secret-exposure.yaml
+mcpsec rules validate rules/mcp01-secret-exposure.yaml
 ```
 
 ---
@@ -422,7 +428,7 @@ jobs:
 MCPSec includes a pluggable YAML rules engine for community-contributed detections. Rules are Sigma-style YAML files:
 
 ```yaml
-id: MCP01-CUSTOM-001
+id: MCP01-R99
 name: Plain-text API key in tool environment
 severity: critical
 owasp_mcp: MCP01
@@ -440,7 +446,7 @@ remediation: |
   environment variable references, not literals.
 ```
 
-Rules live in the `rules/` directory. Load a rule directory explicitly with `--rules`; no recompilation is needed:
+Rules live in the `rules/` directory. The filename prefix matches `owasp_mcp` (`mcp01-secret-exposure.yaml` is an MCP01 rule). MCP04 supply-chain checks and MCP09 shadow-server checks are built in; the YAML set does not duplicate them. Load a rule directory explicitly with `--rules`; no recompilation is needed:
 
 ```bash
 mcpsec scan --rules ./rules mcp-config.json
@@ -465,11 +471,13 @@ mcpsec scan --format splunk \
   mcp-config.json
 ```
 
-The Splunk app is in `splunk/app/` with dashboards in `splunk/dashboards/`. See [docs/splunk-integration.md](docs/splunk-integration.md) for setup instructions.
+HEC events use sourcetype `mcpsec:finding`. The Splunk app is in `splunk/app/` with dashboards in `splunk/dashboards/`. See [docs/splunk-integration.md](docs/splunk-integration.md) for setup instructions.
 
 ---
 
 ## Architecture
+
+![MCPSec scan pipeline: config, discovery, active enumeration, and source review feed one finding pipeline](docs/assets/mcpsec-pipeline.png)
 
 MCPSec uses several evidence sources that feed one finding pipeline:
 
@@ -508,6 +516,10 @@ All scan modes produce the same finding model; `scan` supports table, OCSF JSON,
 ```
 
 ---
+
+## Roadmap
+
+Checks, YAML rules, table output, OCSF, and the Splunk dashboard share the OWASP MCP Top 10:2025 beta categories. The next changes are shared output flags for `active` and `source`, SARIF for pull requests, embedded default rules, and read-only resource and prompt catalogs. The full list is in [docs/roadmap.md](docs/roadmap.md).
 
 ## Contributing
 

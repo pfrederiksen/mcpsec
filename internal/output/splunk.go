@@ -11,11 +11,13 @@ import (
 	"time"
 )
 
+const splunkSourcetype = "mcpsec:finding"
+
 // SplunkHECEvent is the wrapper for Splunk HTTP Event Collector.
 type SplunkHECEvent struct {
 	Time       int64       `json:"time"`
 	Source     string      `json:"source"`
-	Sourcetype string     `json:"sourcetype"`
+	Sourcetype string      `json:"sourcetype"`
 	Index      string      `json:"index,omitempty"`
 	Event      interface{} `json:"event"`
 }
@@ -28,31 +30,9 @@ func WriteSplunk(findings []FindingInput, version, hecURL, hecToken, index strin
 		event := SplunkHECEvent{
 			Time:       now,
 			Source:     "mcpsec",
-			Sourcetype: "_json",
+			Sourcetype: splunkSourcetype,
 			Index:      index,
-			Event: OCSFEvent{
-				ClassUID:    2001,
-				CategoryUID: 2,
-				ActivityID:  1,
-				SeverityID:  severityMap[f.Severity],
-				Severity:    f.Severity,
-				Time:        now,
-				Finding: OCSFFinding{
-					UID:   f.RuleID,
-					Title: f.Name,
-					Desc:  f.Description,
-					Remediation: OCSFRemediation{
-						Desc: f.Remediation,
-					},
-				},
-				Resources: []OCSFResource{
-					{Type: "MCP Server", Name: f.Resource},
-				},
-				Metadata: OCSFMetadata{
-					Product: OCSFProduct{Name: "MCPSec Audit"},
-					Version: version,
-				},
-			},
+			Event:      newOCSFEvent(f, version, now),
 		}
 
 		body, err := json.Marshal(event)
@@ -76,30 +56,8 @@ func WriteSplunkToWriter(w io.Writer, findings []FindingInput, version string) e
 		event := SplunkHECEvent{
 			Time:       now,
 			Source:     "mcpsec",
-			Sourcetype: "_json",
-			Event: OCSFEvent{
-				ClassUID:    2001,
-				CategoryUID: 2,
-				ActivityID:  1,
-				SeverityID:  severityMap[f.Severity],
-				Severity:    f.Severity,
-				Time:        now,
-				Finding: OCSFFinding{
-					UID:   f.RuleID,
-					Title: f.Name,
-					Desc:  f.Description,
-					Remediation: OCSFRemediation{
-						Desc: f.Remediation,
-					},
-				},
-				Resources: []OCSFResource{
-					{Type: "MCP Server", Name: f.Resource},
-				},
-				Metadata: OCSFMetadata{
-					Product: OCSFProduct{Name: "MCPSec Audit"},
-					Version: version,
-				},
-			},
+			Sourcetype: splunkSourcetype,
+			Event:      newOCSFEvent(f, version, now),
 		}
 		if err := enc.Encode(event); err != nil {
 			return err

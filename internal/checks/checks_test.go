@@ -141,7 +141,7 @@ func TestPermissionsCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP03 - Auth Check
+// MCP07 - Authentication Check
 // ---------------------------------------------------------------------------
 
 func TestAuthCheck(t *testing.T) {
@@ -211,7 +211,7 @@ func TestAuthCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP04 - Secrets Check
+// MCP01 - Secrets Check
 // ---------------------------------------------------------------------------
 
 func TestSecretsCheck(t *testing.T) {
@@ -265,7 +265,7 @@ func TestSecretsCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP05 - Unsafe Resource Check
+// MCP05 - Unsafe URI Check
 // ---------------------------------------------------------------------------
 
 func TestUnsafeResourceCheck(t *testing.T) {
@@ -341,7 +341,7 @@ func TestUnsafeResourceCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP06 - Tool Spoofing Check
+// MCP03 - Duplicate Tool Definitions
 // ---------------------------------------------------------------------------
 
 func TestToolSpoofingCheck(t *testing.T) {
@@ -414,7 +414,7 @@ func TestToolSpoofingCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP06 - Tool Spoofing Deduplication
+// MCP03 - Duplicate Tool Deduplication
 // ---------------------------------------------------------------------------
 
 func TestToolSpoofingDoesNotRequireNonstandardHashes(t *testing.T) {
@@ -434,7 +434,7 @@ func TestToolSpoofingDoesNotRequireNonstandardHashes(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP08 - Schema Deduplication
+// MCP03 - Schema Deduplication
 // ---------------------------------------------------------------------------
 
 func TestSchemaCheckDedup(t *testing.T) {
@@ -531,7 +531,7 @@ func TestTransportCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP08 - Schema Check
+// MCP03 - Schema Check
 // ---------------------------------------------------------------------------
 
 func TestSchemaCheck(t *testing.T) {
@@ -592,7 +592,7 @@ func TestSchemaCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP09 - Audit Logging Check
+// MCP08 - Audit Logging Check
 // ---------------------------------------------------------------------------
 
 func TestAuditLoggingCheck(t *testing.T) {
@@ -646,7 +646,7 @@ func TestAuditLoggingCheck(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MCP10 - Resource Exhaustion Check
+// Supplemental rate-limit check (not part of the default scanner)
 // ---------------------------------------------------------------------------
 
 func TestResourceExhaustionCheck(t *testing.T) {
@@ -666,6 +666,20 @@ func TestResourceExhaustionCheck(t *testing.T) {
 				},
 			},
 			wantFind: false,
+		},
+		{
+			name: "explicitly disabled rate limit",
+			ctx: CheckContext{
+				ServerName: "test-server",
+				Server: ServerConfig{
+					URL: "https://example.com/mcp",
+					RateLimit: &RateLimitConfig{
+						Enabled: false,
+					},
+				},
+			},
+			wantFind:   true,
+			wantRuleID: "SUP-001",
 		},
 		{
 			name: "rate limit enabled with max payload - should not find",
@@ -691,7 +705,7 @@ func TestResourceExhaustionCheck(t *testing.T) {
 			if tt.wantFind {
 				require.NotEmpty(t, findings, "expected at least one finding")
 				assert.Equal(t, tt.wantRuleID, findings[0].RuleID)
-				assert.Equal(t, "MCP10", findings[0].OWASPMCP)
+				assert.Empty(t, findings[0].OWASPMCP)
 				assert.Equal(t, "medium", findings[0].Severity)
 			} else {
 				assert.Empty(t, findings, "expected no findings")

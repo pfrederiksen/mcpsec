@@ -16,7 +16,7 @@ MCPSec can send scan results directly to Splunk via HTTP Event Collector (HEC) a
 2. Click **New Token**.
 3. Set the name to `mcpsec`.
 4. On the Input Settings page:
-   - **Source type**: `_json`
+   - **Source type**: `mcpsec:finding`
    - **Index**: Create or select an index (e.g., `mcpsec`)
 5. Click **Review** and then **Submit**.
 6. Copy the generated token.
@@ -70,7 +70,7 @@ If no `--splunk-url` is provided, HEC-formatted events are written to stdout or 
 mcpsec scan --format splunk -o events.json mcp-config.json
 ```
 
-Each event is a self-contained Splunk HEC JSON object with OCSF payload nested in the `event` field.
+Each event is a self-contained Splunk HEC JSON object. The OCSF payload is nested in `event`, and HEC indexes that object as `_raw`. Findings include `unmapped.owasp_mcp` so searches can group by OWASP MCP Top 10:2025 beta category without parsing rule IDs. The HEC sourcetype is `mcpsec:finding`.
 
 ## Installing the Splunk App
 
@@ -93,11 +93,14 @@ Import the MCP Security Posture dashboard:
 3. Paste the contents of `splunk/dashboards/mcp_security_posture.xml`.
 4. Save.
 
-The dashboard provides:
+The dashboard queries `index=mcpsec sourcetype=mcpsec:finding` and reads the OCSF fields MCPSec emits (`finding.uid`, `resources{}.name`, `severity`, and `unmapped.owasp_mcp`). It provides:
+
 - **Findings by Severity** -- Pie chart of critical/high/medium/low findings
-- **Findings by OWASP Category** -- Bar chart of MCP01-MCP10 distribution
+- **Findings by OWASP Category** -- Bar chart of MCP01-MCP10 distribution, using the 2025 beta names
 - **Top Affected Servers** -- Column chart of servers with most findings
 - **Recent Findings** -- Table of latest findings with details
+
+The Splunk app in `splunk/app/` also ships lookup tables for those category and severity names (`lookups/mcpsec_owasp_categories.csv` and `lookups/mcpsec_severity.csv`). Install the app before relying on the `category` and `severity_label` fields in ad hoc search. The pasted dashboard does not require the lookups.
 
 ## Troubleshooting
 

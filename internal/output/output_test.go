@@ -29,6 +29,7 @@ func TestWriteOCSF(t *testing.T) {
 					Description: "Tool description contains injection patterns",
 					Remediation: "Sanitize tool descriptions",
 					Resource:    "mcpserver:test-server",
+					OWASPMCP:    "MCP03",
 				},
 			},
 			version: "1.0.0",
@@ -91,6 +92,11 @@ func TestWriteOCSF(t *testing.T) {
 				require.Len(t, event.Resources, 1)
 				assert.Equal(t, "MCP Server", event.Resources[0].Type)
 				assert.Equal(t, tt.findings[i].Resource, event.Resources[0].Name)
+				if tt.findings[i].OWASPMCP == "" {
+					assert.Empty(t, event.Unmapped)
+				} else {
+					assert.Equal(t, tt.findings[i].OWASPMCP, event.Unmapped["owasp_mcp"])
+				}
 			}
 		})
 	}
@@ -116,6 +122,7 @@ func TestWriteTable(t *testing.T) {
 					Name:     "Prompt injection detected",
 					Severity: "high",
 					Resource: "mcpserver:test-server",
+					OWASPMCP: "MCP03",
 				},
 				{
 					RuleID:   "MCP03-001",
@@ -124,7 +131,7 @@ func TestWriteTable(t *testing.T) {
 					Resource: "mcpserver:server-a",
 				},
 			},
-			expectColumns: []string{"RULE ID", "NAME", "SEVERITY", "RESOURCE"},
+			expectColumns: []string{"RULE ID", "NAME", "SEVERITY", "OWASP", "RESOURCE"},
 			expectTotal:   "Total: 2 finding(s)",
 		},
 		{
@@ -155,6 +162,9 @@ func TestWriteTable(t *testing.T) {
 			// Verify finding data appears in the output.
 			for _, f := range tt.findings {
 				assert.Contains(t, output, f.RuleID, "table should contain rule ID %s", f.RuleID)
+				if f.OWASPMCP != "" {
+					assert.Contains(t, output, f.OWASPMCP)
+				}
 			}
 		})
 	}
@@ -188,6 +198,7 @@ func TestWriteSplunkToWriter(t *testing.T) {
 					Description: "Plain-text secret found",
 					Remediation: "Use a secrets manager",
 					Resource:    "mcpserver:test-server",
+					OWASPMCP:    "MCP01",
 				},
 			},
 			version: "1.0.0",
@@ -230,7 +241,7 @@ func TestWriteSplunkToWriter(t *testing.T) {
 				require.NoError(t, err, "each line should be valid JSON")
 
 				assert.Equal(t, "mcpsec", event.Source)
-				assert.Equal(t, "_json", event.Sourcetype)
+				assert.Equal(t, "mcpsec:finding", event.Sourcetype)
 				assert.Greater(t, event.Time, int64(0), "time should be positive")
 
 				// The Event field is an interface{} that decodes as map[string]interface{}.
@@ -245,6 +256,14 @@ func TestWriteSplunkToWriter(t *testing.T) {
 				require.True(t, ok, "event should contain a finding object")
 				assert.Equal(t, tt.findings[i].RuleID, findingMap["uid"])
 				assert.Equal(t, tt.findings[i].Name, findingMap["title"])
+				if tt.findings[i].OWASPMCP == "" {
+					_, present := eventMap["unmapped"]
+					assert.False(t, present)
+				} else {
+					unmapped, ok := eventMap["unmapped"].(map[string]interface{})
+					require.True(t, ok, "event should contain unmapped.owasp_mcp")
+					assert.Equal(t, tt.findings[i].OWASPMCP, unmapped["owasp_mcp"])
+				}
 
 				// Verify metadata.
 				metaMap, ok := eventMap["metadata"].(map[string]interface{})
